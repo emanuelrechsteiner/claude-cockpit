@@ -1,0 +1,88 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" SessionStart"
+          }
+        ]
+      },
+      {
+        "matcher": "resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" SessionStart"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" SubagentStart"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" FileWrite"
+          }
+        ]
+      },
+      {
+        "matcher": "TaskCreate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" TaskCreated"
+          }
+        ]
+      },
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" TaskUpdated"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" SessionEnd"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/cockpit/hooks/cockpit-event.sh\" SubagentStop"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/cockpit/statusline/statusline.sh"
+  }
+}

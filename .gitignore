@@ -1,0 +1,12 @@
+node_modules/
+/events-*.jsonl
+/errors.log
+/current-session.json
+/dashboard.log
+# Briefkasten der Statuszeile (eine Datei je Sitzung) + dessen atomare
+# Zwischenablage. Reiner Laufzeitzustand — versioniert wuerde er jede
+# Uebergabe blockieren, so wie es plugins/*.json im Konfig-Repo getan haben.
+/status-*.json
+/.status.*
+# Finder-Metadaten von macOS — blockierte am 2026-09-23 die Uebergabe
+.DS_Store

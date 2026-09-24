@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Startet Claude Code + Cockpit-Dashboard nebeneinander in einer tmux-Session.
+#
+# Session-Auflösung: der SessionStart-Hook schreibt current-session.json,
+# die App liest sie selbst — der Launcher übergibt nur den Zielordner.
+#
+# Aufräum-Disziplin (2026-08-04, nach dem Ruinen-Vorfall):
+#  - Verwaiste Dashboard-Prozesse werden vor dem Start beendet. Sie überleben
+#    sonst das Abräumen ihres Panes und zeichnen zu mehreren ins selbe
+#    Terminal — sichtbar als übereinandergestapelte Karten.
+#  - Eine vorhandene Sitzung wird nur wiederverwendet, wenn sie UNVERSEHRT ist
+#    (genau 2 Panes). Eine Ruine wird abgerissen statt betreten.
+#  - Endet Claude, endet die ganze Sitzung. Sonst bleibt ein sinnloses
+#    Dashboard-Pane als Ruine stehen.
+set -euo pipefail
+
+COCKPIT="$HOME/.claude/cockpit"
+NAME="cockpit-$(basename "$PWD" | tr -c 'a-zA-Z0-9' '-' | sed 's/-*$//')"
+APP_PATTERN='tsx src/ui/app.tsx'
+
+[ -d "$COCKPIT" ] || { echo "Cockpit-Installation fehlt: $COCKPIT" >&2; exit 1; }
+
+# --- 0. Terminal-Vorbedingung laut melden (kein Abbruch, kein stiller Fallback) --
+# ⌘1-6 erreichen das Dashboard nur, wenn GHOSTTY selbst die Tastenbelegung in
+# eine Escape-Sequenz uebersetzt (config/ghostty-snippet.conf). Diese Pruefung
+# muss VOR `tmux new-session` laufen: $TERM_PROGRAM ist hier noch der Wert des
+# AEUSSEREN Terminals — sobald tmux angehaengt ist, ueberschreibt tmux selbst
+# TERM_PROGRAM fuer jeden Pane-Prozess auf "tmux" (gemessen 2026-09-23), womit
+# die Pruefung an dieser Stelle die letzte verlaessliche Gelegenheit ist.
+if [ "${TERM_PROGRAM:-}" != "ghostty" ]; then
+  echo "⚠ Terminal ist '${TERM_PROGRAM:-unbekannt}', nicht Ghostty: ⌘1-6 kommen in dieser Sitzung nicht als Tastenbelegung an, die Karten sind über Tastatur nicht erreichbar. Siehe README ‚Setup (einmalig)'." >&2
+fi
+
+# --- 1. Verwaiste Dashboards beenden (nur solche ohne lebendes tmux-Pane) ----
+# ACHTUNG: Das Dashboard wird per `exec` gestartet, ist also SELBST der
+# Pane-Prozess. Ein Abgleich nur über das Elternteil würde ein legitim
+# laufendes Dashboard erschlagen. Geprüft wird deshalb die eigene PID, das
+# Elternteil und das Großelternteil (npx kann eine Zwischenstufe einziehen).
+candidates=$(pgrep -f "$APP_PATTERN" || true)
+if [ -n "$candidates" ]; then
+  live_panes=$(tmux list-panes -a -F '#{pane_pid}' 2>/dev/null || true)
+  for pid in $candidates; do
+    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)
+    gpid=""
+    [ -n "$ppid" ] && gpid=$(ps -o ppid= -p "$ppid" 2>/dev/null | tr -d ' ' || true)
+    attached=0
+    for probe in "$pid" "$ppid" "$gpid"; do
+      [ -n "$probe" ] && grep -qx "$probe" <<<"$live_panes" && attached=1
+    done
+    if [ "$attached" = "0" ]; then
+      kill "$pid" 2>/dev/null || true
+      echo "▸ verwaistes Dashboard beendet (PID $pid)"
+    fi
+  done
+fi
+
+# --- 2. Vorhandene Sitzung nur bei Unversehrtheit wiederverwenden ------------
+if tmux has-session -t "$NAME" 2>/dev/null; then
+  panes=$(tmux list-panes -t "$NAME" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$panes" = "2" ]; then
+    exec tmux attach -t "$NAME"
+  fi
+  echo "▸ unvollständige Sitzung '$NAME' ($panes Pane(s)) wird neu aufgebaut"
+  tmux kill-session -t "$NAME" 2>/dev/null || true
+fi
+
+# --- 3. Neu aufbauen ---------------------------------------------------------
+# Endet Claude, wird die ganze Sitzung abgeräumt (kein Ruinen-Pane).
+tmux -f "$COCKPIT/config/tmux-cockpit.conf" new-session -d -s "$NAME" -c "$PWD" \
+  "claude; tmux kill-session -t '$NAME'"
+
+# stderr wandert ins Bautagebuch: Stürzt das Dashboard ab, schließt sich sein
+# Pane sauber (kein Ruinenbild) — der Grund steht in dashboard.log.
+tmux split-window -h -l 48 -t "$NAME" -c "$COCKPIT" \
+  "COCKPIT_TARGET_CWD='$PWD' exec npx tsx src/ui/app.tsx 2>>'$COCKPIT/dashboard.log'"
+
+tmux select-pane -t "$NAME:0.0"
+exec tmux attach -t "$NAME"

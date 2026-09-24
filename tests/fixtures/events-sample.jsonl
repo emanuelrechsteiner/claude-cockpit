@@ -1,0 +1,4 @@
+{"ts":1,"event":"SubagentStart","data":{"session_id":"s","subagent_id":"a1","subagent_type":"research-agent"}}
+{"ts":2,"event":"TaskCreated","data":{"task_id":"t1","task_name":"Build parser"}}
+{"ts":3,"event":"TaskCompleted","data":{"task_id":"t1","result_status":"success"}}
+{"ts":4,"event":"SubagentStop","data":{"subagent_id":"a1","result_status":"success"}}

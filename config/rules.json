@@ -1,0 +1,9 @@
+{
+  "links": [
+    { "kind": "artifact", "pattern": "^https://claude\\.ai/(public/)?artifacts?/" },
+    { "kind": "preview", "pattern": "^https://[a-z0-9-]+\\.vercel\\.app" },
+    { "kind": "source", "pattern": "^https://(github\\.com|docs\\.|code\\.claude\\.com)" }
+  ],
+  "linkDenylist": ["registry\\.npmjs\\.org", "fonts\\.googleapis"],
+  "fileCandidates": ["CLAUDE.md", "README.md", "PLAN*.md", "PLANNING.md", "ARCHITECTURE*.md"]
+}
