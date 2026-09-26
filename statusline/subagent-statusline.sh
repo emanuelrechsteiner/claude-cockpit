@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# Cockpit-Subagentenzeile (Claude Code `subagentStatusLine`, seit 2026-09-26).
+# Cockpit subagent status line (Claude Code `subagentStatusLine`, since 2026-09-26).
 #
-# Claude Code ruft dieses Skript bei jeder Aktualisierung des Agenten-Panels
-# unter dem Eingabefeld auf und uebergibt auf stdin ALLE sichtbaren
-# Subagenten-Zeilen als `tasks`-Liste (id, name, type, status, description,
-# label, startTime, model, effort, tokenCount, contextWindowSize, ...).
-# Quelle: code.claude.com/docs/en/statusline#subagent-status-lines
+# Claude Code calls this script on every refresh of the agent panel under the
+# input field and hands ALL visible subagent rows on stdin as a `tasks` list
+# (id, name, type, status, description, label, startTime, model, effort,
+# tokenCount, contextWindowSize, ...).
+# Source: code.claude.com/docs/en/statusline#subagent-status-lines
 #
-# Zwei Aufgaben:
-# 1. BRIEFKASTEN: die Liste als subagents-<session>.json ablegen, damit die
-#    Subagenten-Karte des Cockpits Typ, Modell, Effort und Taetigkeit zeigen
-#    kann. Diese Daten gibt Claude Code sonst keinem anderen Prozess.
-# 2. PANEL LEEREN, aber nur im Cockpit: je Zeile `{"id": …, "content": ""}`
-#    blendet sie laut Doku aus ("emit an empty content string to hide it").
-#    Ausserhalb einer Cockpit-tmux-Sitzung gibt das Skript NICHTS aus — dann
-#    bleibt die Standardanzeige von Claude Code stehen, sonst waeren laufende
-#    Subagenten ohne Cockpit unsichtbar.
+# Two jobs:
+# 1. MAILBOX: drop the list as subagents-<session>.json, so Cockpit's
+#    Subagents card can show type, model, effort, and activity. Claude Code
+#    hands this data to no other process otherwise.
+# 2. CLEAR THE PANEL, but only inside Cockpit: per row `{"id": …, "content":
+#    ""}` hides it per the docs ("emit an empty content string to hide it").
+#    Outside a Cockpit tmux session, this script outputs NOTHING — then
+#    Claude Code's default display stays, otherwise running subagents would
+#    be invisible without Cockpit.
 #
-# Fail-open wie statusline.sh: dieses Skript darf Claude Code nie stoeren.
+# Fail-open like statusline.sh: this script must never disturb Claude Code.
 export LC_ALL=C
 input=$(cat)
 
@@ -37,9 +37,9 @@ if [ -d "$COCKPIT_DIR" ] && [ -n "$SESSION_ID" ]; then
   } 2>/dev/null || true
 fi
 
-# Laeuft Claude Code in einer Cockpit-Sitzung? Die Launcher-Sitzungen heissen
-# cockpit-<ordner> (bin/cockpit). COCKPIT_IN_COCKPIT=1/0 ueberschreibt die
-# Erkennung (Pruefstaende, oder wer das Panel trotz Cockpit behalten will).
+# Is Claude Code running inside a Cockpit session? The launcher's sessions
+# are named cockpit-<folder> (bin/cockpit). COCKPIT_IN_COCKPIT=1/0 overrides
+# the detection (test rigs, or anyone who wants to keep the panel despite Cockpit).
 in_cockpit() {
   case "${COCKPIT_IN_COCKPIT:-}" in
     1) return 0 ;;

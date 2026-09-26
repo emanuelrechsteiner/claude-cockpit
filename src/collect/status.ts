@@ -2,17 +2,16 @@ import { readFileSync } from 'node:fs';
 import type { StatusInfo, StatusWindow } from '../types.js';
 
 /**
- * Liest den Briefkasten, den statusline/statusline.sh pro Sitzung ablegt.
+ * Reads the mailbox that statusline/statusline.sh drops per session.
  *
- * Warum ueberhaupt ein Briefkasten: Claude Code uebergibt Kontext- und
- * Verbrauchszahlen AUSSCHLIESSLICH der Statuszeile, auf stdin. Das Dashboard
- * ist ein eigener Prozess und bekommt sie nie zu sehen. Die Statuszeile legt
- * sie deshalb als status-<session>.json ab.
+ * Why a mailbox at all: Claude Code hands context and usage numbers
+ * EXCLUSIVELY to the status line, on stdin. The dashboard is a separate
+ * process and never sees them. The status line therefore drops them as
+ * status-<session>.json.
  *
- * Veraltete Staende werden NICHT verschwiegen, sondern als `stale` markiert:
- * Die Statuszeile laeuft nur, wenn Claude arbeitet. Steht die Sitzung still,
- * altert die Zahl — sie dann unmarkiert weiterzuzeigen wuerde einen Stand
- * vortaeuschen, den niemand geprueft hat.
+ * Stale readings are NOT hidden, but marked `stale`: the status line only
+ * runs while Claude is working. If the session sits idle, the number ages —
+ * continuing to show it unmarked would fake a reading nobody has checked.
  */
 export const STALE_AFTER_SECONDS = 120;
 
@@ -46,9 +45,9 @@ export function readStatus(path: string, nowSeconds = Math.floor(Date.now() / 10
     model: str(raw['model']),
     contextPct: num(ctx['used_percentage']),
     windowSize: num(ctx['window_size']),
-    // Speist sich aus context_window.total_input_tokens — den Token IM
-    // FENSTER, Cache eingerechnet. Siehe statusline.sh: current_usage zaehlt
-    // nur den letzten API-Aufruf und ergaebe hier eine irrefuehrende Zahl.
+    // Fed from context_window.total_input_tokens — the tokens IN THE
+    // WINDOW, cache included. See statusline.sh: current_usage only counts
+    // the last API call and would give a misleading number here.
     inputTokens: num(ctx['input_tokens']),
     outputTokens: num(ctx['output_tokens']),
     costUsd: num(cost['total_usd']),

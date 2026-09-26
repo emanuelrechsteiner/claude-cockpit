@@ -14,9 +14,9 @@ export interface CollectorOptions {
   skipAgents?: boolean;
   sessionCwd?: string;
   listPlugins?: () => PluginInfo[];
-  /** Briefkasten der Statuszeile; fehlt er, bleiben Kontext- und Verbrauchskarte leer. */
+  /** Status line's mailbox; if missing, the Context and Usage cards stay empty. */
   statusPath?: string;
-  /** Briefkasten der Subagentenzeile (subagent-statusline.sh); fehlt er, bleibt Karte 3 bei den Hook-Ereignissen. */
+  /** Subagent status line's mailbox (subagent-statusline.sh); if missing, card 3 falls back to the hook events. */
   liveAgentsPath?: string;
   /** Agent definitions (~/.claude/agents) for model/effort on card 3. */
   agentsDir?: string;
@@ -42,7 +42,7 @@ export class Collector {
       const enoent = (e as NodeJS.ErrnoException).code === 'ENOENT';
       errors.push({
         source: 'events',
-        reason: enoent ? 'wartet — noch keine Ereignisse' : String(e),
+        reason: enoent ? 'waiting — no events yet' : String(e),
       });
     }
 
@@ -57,7 +57,7 @@ export class Collector {
         const enoent = (e as NodeJS.ErrnoException).code === 'ENOENT';
         errors.push({
           source: 'transcript',
-          reason: enoent ? 'wartet — Transcript noch nicht vorhanden' : String(e),
+          reason: enoent ? 'waiting — no transcript yet' : String(e),
         });
       }
     }
@@ -100,7 +100,7 @@ export class Collector {
         const enoent = (e as NodeJS.ErrnoException).code === 'ENOENT';
         errors.push({
           source: 'status',
-          reason: enoent ? 'wartet — Statuszeile hat noch nichts abgelegt' : String(e),
+          reason: enoent ? 'waiting — status line has not written yet' : String(e),
         });
       }
     }

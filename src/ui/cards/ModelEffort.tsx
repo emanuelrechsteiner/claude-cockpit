@@ -3,8 +3,8 @@ import { Text } from 'ink';
 import { EFFORT_LEVELS, MODEL_CHOICES, clampIndex } from '../../models.js';
 
 /**
- * Karte 1: ↑↓ Modell, ⏎ oeffnet die Effort-Leiste, ←→ Stufe, ⏎ schickt beides
- * an Claude. Modelle ohne Effort werden mit dem ersten ⏎ direkt umgestellt.
+ * Card 1: ↑↓ model, ⏎ opens the effort bar, ←→ level, ⏎ sends both to
+ * Claude. Models without effort are switched directly with the first ⏎.
  */
 export function ModelEffort(props: {
   current: string | null;
@@ -16,7 +16,7 @@ export function ModelEffort(props: {
   const selectedIndex = clampIndex(props.cursor, MODEL_CHOICES.length);
   return (
     <>
-      <Text dimColor>aktiv: {props.current ?? 'noch keine Angabe'}</Text>
+      <Text dimColor>active: {props.current ?? 'not reported yet'}</Text>
       {props.focused &&
         MODEL_CHOICES.map((m, i) => {
           const selected = i === selectedIndex;
@@ -24,7 +24,7 @@ export function ModelEffort(props: {
             <React.Fragment key={m.id}>
               <Text inverse={selected && props.effortCursor === null}>
                 {selected ? '›' : ' '} {m.label}
-                {!m.effort && <Text dimColor> (ohne Effort)</Text>}
+                {!m.effort && <Text dimColor> (no effort)</Text>}
               </Text>
               {selected && props.effortCursor !== null && (
                 <Text>

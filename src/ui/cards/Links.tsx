@@ -6,7 +6,7 @@ import { osc8 } from '../../osc8.js';
 const BADGE: Record<LinkItem['kind'], string> = { artifact: '◆', preview: '▲', source: '§' };
 
 export function Links(props: { data: LinkItem[]; focused: boolean; cursor: number }) {
-  if (props.data.length === 0) return <Text dimColor>noch keine Links</Text>;
+  if (props.data.length === 0) return <Text dimColor>no links yet</Text>;
   return (
     <>
       {props.data.slice(0, 6).map((l, i) => (

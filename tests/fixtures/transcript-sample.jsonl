@@ -1,4 +1,4 @@
-{"type":"assistant","message":{"content":[{"type":"text","text":"Preview: https://myapp-abc.vercel.app/ und Doku https://code.claude.com/docs/x"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Preview: https://myapp-abc.vercel.app/ and docs https://code.claude.com/docs/x"}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/proj/CLAUDE.md"}}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/tmp/proj/src/util.ts"}}]}}
 {"type":"user","message":{"content":"ignore https://evil.example.com"}}

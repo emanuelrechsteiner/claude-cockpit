@@ -1,34 +1,32 @@
 #!/usr/bin/env bash
-# Verhaltensbeweis: Maus im Cockpit — Klick-Fokus und frei verschiebbare
-# Trennlinie (2026-09-23, Revision von `mouse off` -> `mouse on`, siehe
-# docs/adr/0001-maus-statt-nur-tastatur.md).
+# Behavioral proof: mouse in Cockpit — click-focus and a freely draggable
+# divider (2026-09-23, revision from `mouse off` -> `mouse on`, see
+# docs/adr/0001-mouse-not-only-keyboard.md).
 #
-# Warum das nicht in vitest passt: das Verhalten entsteht ausschliesslich in
-# tmux' Maus-Verarbeitung (mouse-select-pane / MouseDrag1Border). Ein
-# Renderer-Test ohne echten tmux-Client und ohne echte SGR-Mausereignisse
-# sieht davon nichts — genau der Fehler, den testing-quality.md unter
-# "Rendered-Proof for Visual Claims" und slop-prevention.md Trigger 3
-# beschreiben (Beweis am ARTEFAKT, nicht an der Deklaration).
+# Why this doesn't fit in vitest: the behavior arises exclusively in tmux's
+# mouse handling (mouse-select-pane / MouseDrag1Border). A renderer test
+# without a real tmux client and without real SGR mouse events sees none of
+# it — exactly the mistake that testing-quality.md's "Rendered-Proof for
+# Visual Claims" and slop-prevention.md Trigger 3 describe (proof against
+# the ARTIFACT, not the declaration).
 #
-# Warum `tmux send-keys` hier NICHT reicht (anders als in navigation-check.sh):
-# `send-keys` schreibt Tasten direkt in den Eingabepuffer eines Panes/der
-# Session — das umgeht genau die Schicht, die geprueft werden soll: die
-# Umwandlung roher SGR-Maus-Escapesequenzen (wie sie ein echtes Terminal wie
-# Ghostty an den angehaengten tmux-CLIENT schickt) in tmux-interne Aktionen
-# (Fokuswechsel, Rahmen-Resize). Deshalb haengt dieser Test einen ECHTEN
-# tmux-Client ueber ein Pseudo-Terminal an (Python `pty.fork()` + `tmux
-# attach`) und schreibt die SGR-Bytes auf die Master-Seite des Pseudo-
-# Terminals — genau das, was ein echtes Terminal auf die Standardeingabe des
-# Clients schreiben wuerde. Der tmux-SERVER (nicht der Client) parst diese
-# Bytes und entscheidet ueber Fokus/Resize; der Client ist nur die duenne
-# Weiterleitung, die ein echtes Terminal ersetzt.
+# Why `tmux send-keys` is NOT enough here (unlike in navigation-check.sh):
+# `send-keys` writes keys directly into a pane's/session's input buffer —
+# that bypasses exactly the layer meant to be tested: the translation of raw
+# SGR mouse escape sequences (as a real terminal like Ghostty sends to the
+# attached tmux CLIENT) into tmux-internal actions (focus switch, border
+# resize). This test therefore attaches a REAL tmux client via a
+# pseudo-terminal (Python `pty.fork()` + `tmux attach`) and writes the SGR
+# bytes to the master side of the pseudo-terminal — exactly what a real
+# terminal would write to the client's standard input. The tmux SERVER (not
+# the client) parses these bytes and decides on focus/resize; the client is
+# only the thin relay that a real terminal replaces.
 #
-# Sicherheitshinweis: laeuft ausschliesslich auf einem eigenen Socket
-# (`-L cockpit-mouse-proof`) — der laufende Standard-tmux-Server der
-# Nutzersitzung wird nie angefasst. `kill-server` am Ende beendet nur diesen
-# eigenen Socket.
+# Safety note: runs exclusively on its own socket (`-L cockpit-mouse-proof`)
+# — the user's own running standard tmux server is never touched.
+# `kill-server` at the end only ends this dedicated socket.
 #
-# Aufruf:  bash tests/e2e/mouse-check.sh
+# Usage:  bash tests/e2e/mouse-check.sh
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 REPO=$PWD
@@ -38,13 +36,13 @@ SESSION="cockpit-mouse-test-$$"
 COLS=200
 ROWS=50
 RIGHT_W=48
-DELTA=15   # Spalten, um die die Trennlinie gezogen wird (>=10 gefordert)
+DELTA=15   # columns by which the divider is dragged (>=10 required)
 
-command -v tmux >/dev/null || { echo "tmux fehlt — nicht durchfuehrbar" >&2; exit 1; }
-command -v python3 >/dev/null || { echo "python3 fehlt — nicht durchfuehrbar" >&2; exit 1; }
+command -v tmux >/dev/null || { echo "tmux missing — cannot run" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "python3 missing — cannot run" >&2; exit 1; }
 
 PASS=0; FAIL=0
-check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] erwartet=%s bekommen=%s\n' "$1" "$2" "$3"; fi; }
+check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] expected=%s got=%s\n' "$1" "$2" "$3"; fi; }
 
 T() { tmux -L "$SOCK" "$@"; }
 
@@ -52,11 +50,11 @@ DIR=$(mktemp -d)
 cleanup() { T kill-server 2>/dev/null; rm -rf "$DIR"; }
 trap cleanup EXIT
 
-# ── Pseudo-Terminal-Client: schreibt rohe Bytes auf die Standardeingabe ─────
-# eines ECHT an die Session angehaengten `tmux attach`-Clients. Jede Zeile
-# von stdin ist EINE Escape-Sequenz (ohne eigenes Zeilenende — ein
-# angehaengtes '\n' waere selbst ein Tastendruck und wuerde als Enter im
-# fokussierten Pane landen).
+# ── Pseudo-terminal client: writes raw bytes to the standard input ─────────
+# of a `tmux attach` client REALLY attached to the session. Each line from
+# stdin is ONE escape sequence (with no line ending of its own — an
+# appended '\n' would itself be a keypress and would land as Enter in the
+# focused pane).
 cat > "$DIR/send_mouse.py" <<'PY'
 import fcntl
 import os
@@ -74,13 +72,13 @@ if pid == 0:
     env = dict(os.environ)
     env["TERM"] = "xterm-256color"
     os.execvpe("tmux", ["tmux", "-L", sock, "attach", "-t", session], env)
-    os._exit(127)  # nur erreicht, wenn execvpe fehlschlaegt
+    os._exit(127)  # only reached if execvpe fails
 
-# Fenstergroesse auf dem Pseudo-Terminal setzen, damit der Client sich nicht
-# auf eine abweichende Groesse legt (Kernel schickt SIGWINCH automatisch).
+# Set the window size on the pseudo-terminal, so the client doesn't settle
+# on a different size (the kernel sends SIGWINCH automatically).
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
-time.sleep(0.6)  # Client muss angehaengt und gerendert haben
+time.sleep(0.6)  # client must be attached and have rendered
 for line in lines:
     try:
         os.write(fd, line)
@@ -89,16 +87,16 @@ for line in lines:
     time.sleep(0.12)
 time.sleep(0.3)
 
-# WARUM SIGTERM + sofortiges close() statt blockierendem waitpid() danach
-# (gemessen 2026-09-23): ein `tmux attach`-Client, der gerade eine Mausaktion
-# verarbeitet hat, beendet sich auf SIGTERM nicht immer sofort — blockierendes
-# `waitpid(pid, 0)` hing dabei reproduzierbar unbegrenzt. Das Schliessen der
-# Master-Seite des Pseudo-Terminals loest fuer den Client (Sitzungsleiter
-# ohne Terminal mehr) ein SIGHUP aus und beendet ihn zuverlaessig — das
-# eigentliche Kill-Signal ist hier das Schliessen, SIGTERM ist nur der erste,
-# schnellere Versuch. `waitpid` danach nur noch NICHT-blockierend mit
-# Zeitbudget: bleibt der Prozess laenger am Leben, wird er verwaist und
-# spaeter vom System eingesammelt statt den Test zu blockieren.
+# WHY SIGTERM + immediate close() instead of a blocking waitpid() afterward
+# (measured 2026-09-23): a `tmux attach` client that just processed a mouse
+# action does not always terminate immediately on SIGTERM — a blocking
+# `waitpid(pid, 0)` reproducibly hung indefinitely there. Closing the master
+# side of the pseudo-terminal triggers a SIGHUP for the client (session
+# leader with no terminal left) and reliably terminates it — the actual kill
+# signal here is the close, SIGTERM is only the first, faster attempt.
+# `waitpid` afterward only NON-blocking with a time budget: if the process
+# stays alive longer, it becomes orphaned and is later reaped by the system
+# instead of blocking the test.
 try:
     os.kill(pid, 15)
 except ProcessLookupError:
@@ -114,20 +112,20 @@ for _ in range(20):
     time.sleep(0.05)
 PY
 
-send_mouse() {  # send_mouse <datei-mit-sgr-zeilen>
+send_mouse() {  # send_mouse <file-with-sgr-lines>
   python3 "$DIR/send_mouse.py" "$SOCK" "$SESSION" "$COLS" "$ROWS" < "$1"
 }
 
-build_click() {  # build_click <col> <row> > datei — Druecken + Loslassen
+build_click() {  # build_click <col> <row> > file — press + release
   local col=$1 row=$2
   printf '\033[<0;%d;%dM\n' "$col" "$row"
   printf '\033[<0;%d;%dm\n' "$col" "$row"
 }
 
-build_drag() {  # build_drag <startspalte> <zeile> <delta> > datei
-  # Druecken auf der Trennlinie, dann DELTA Zieh-Schritte nach rechts
-  # (Cb=32 = Bewegung mit gehaltener Taste 1), dann Loslassen — simuliert
-  # ein echtes Ziehen, nicht nur einen Sprung.
+build_drag() {  # build_drag <start-col> <row> <delta> > file
+  # Press on the divider, then DELTA drag steps to the right
+  # (Cb=32 = movement with button 1 held), then release — simulates a real
+  # drag, not just a jump.
   local col=$1 row=$2 delta=$3 i c final
   printf '\033[<0;%d;%dM\n' "$col" "$row"
   for i in $(seq 1 "$delta"); do
@@ -141,13 +139,13 @@ build_drag() {  # build_drag <startspalte> <zeile> <delta> > datei
 active_pane() { T display-message -p -t "$SESSION" '#{pane_index}'; }
 pane_width()  { T display-message -p -t "$SESSION:0.$1" '#{pane_width}'; }
 
-# ── Session wie bin/cockpit aufteilen (links gross, rechts 48 Spalten) ──────
-# `-x`/`-y` explizit gesetzt (wie resize-regression.sh/navigation-check.sh):
-# ohne angehaengten Client waere die Groesse sonst vom aufrufenden Terminal
-# oder einem 80x24-Standard abhaengig — hier deterministisch fuer den Test.
-# Statt `claude`/der echten App laufen beide Panes mit `cat > datei`: dieser
-# Test prueft ausschliesslich tmux' Maus-Mechanik (Fokus, Rahmen-Resize),
-# nicht die Dashboard-App — die Aufteilung selbst ist identisch zu bin/cockpit.
+# ── Split the session like bin/cockpit (left large, right 48 columns) ──────
+# `-x`/`-y` set explicitly (like resize-regression.sh/navigation-check.sh):
+# without an attached client, the size would otherwise depend on the calling
+# terminal or an 80x24 default — deterministic here for the test.
+# Instead of `claude`/the real app, both panes run `cat > file`: this test
+# checks only tmux's mouse mechanics (focus, border resize), not the
+# dashboard app — the split itself is identical to bin/cockpit.
 T -f "$CONF" new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" -c "$DIR" "cat > '$DIR/left.txt'"
 T split-window -h -l "$RIGHT_W" -t "$SESSION" -c "$DIR" "cat > '$DIR/right.txt'"
 T select-pane -t "$SESSION:0.0"
@@ -155,52 +153,52 @@ T select-pane -t "$SESSION:0.0"
 read -r RIGHT_LEFT RIGHT_TOP <<<"$(T display-message -p -t "$SESSION:0.1" '#{pane_left} #{pane_top}')"
 CLICK_COL=$((RIGHT_LEFT + 3))
 CLICK_ROW=$((RIGHT_TOP + 3))
-# 0-basierte Randspalte von tmux (`pane_left` des rechten Panes) ist
-# zahlengleich mit der 1-basierten SGR-Spalte der Trennlinie unmittelbar
-# links davon ((RIGHT_LEFT - 1) + 1 == RIGHT_LEFT).
+# tmux's 0-based edge column (`pane_left` of the right pane) is numerically
+# equal to the 1-based SGR column of the divider immediately to its left
+# ((RIGHT_LEFT - 1) + 1 == RIGHT_LEFT).
 BORDER_COL=$RIGHT_LEFT
 BORDER_ROW=$((RIGHT_TOP + 6))
 
-echo "== Geometrie: rechtes Pane left=$RIGHT_LEFT top=$RIGHT_TOP · Trennlinie Spalte=$BORDER_COL =="
+echo "== Geometry: right pane left=$RIGHT_LEFT top=$RIGHT_TOP · divider column=$BORDER_COL =="
 
-# ── (a) Klick ins rechte Pane setzt den Fokus dorthin ───────────────────────
-check "start/links-aktiv" 0 "$(active_pane)"
+# ── (a) Clicking the right pane moves focus there ───────────────────────────
+check "start/left-active" 0 "$(active_pane)"
 build_click "$CLICK_COL" "$CLICK_ROW" > "$DIR/click.seq"
 send_mouse "$DIR/click.seq"
-check "klick-rechts/fokus-wechselt" 1 "$(active_pane)"
+check "click-right/focus-switches" 1 "$(active_pane)"
 
-# ── (b) Trennlinie ziehen veraendert die Breite beider Panes ────────────────
+# ── (b) Dragging the divider changes the width of both panes ───────────────
 T select-pane -t "$SESSION:0.0"
 W_LEFT_BEFORE=$(pane_width 0)
 W_RIGHT_BEFORE=$(pane_width 1)
-echo "== vor dem Ziehen: links=${W_LEFT_BEFORE} rechts=${W_RIGHT_BEFORE} =="
+echo "== before dragging: left=${W_LEFT_BEFORE} right=${W_RIGHT_BEFORE} =="
 build_drag "$BORDER_COL" "$BORDER_ROW" "$DELTA" > "$DIR/drag.seq"
 send_mouse "$DIR/drag.seq"
 W_LEFT_AFTER=$(pane_width 0)
 W_RIGHT_AFTER=$(pane_width 1)
-echo "== nach dem Ziehen (+$DELTA Spalten angefordert): links=${W_LEFT_AFTER} rechts=${W_RIGHT_AFTER} =="
-check "ziehen/links-breiter" "$((W_LEFT_BEFORE + DELTA))" "$W_LEFT_AFTER"
-check "ziehen/rechts-schmaler" "$((W_RIGHT_BEFORE - DELTA))" "$W_RIGHT_AFTER"
+echo "== after dragging (+$DELTA columns requested): left=${W_LEFT_AFTER} right=${W_RIGHT_AFTER} =="
+check "drag/left-wider" "$((W_LEFT_BEFORE + DELTA))" "$W_LEFT_AFTER"
+check "drag/right-narrower" "$((W_RIGHT_BEFORE - DELTA))" "$W_RIGHT_AFTER"
 
-# ── Gegenprobe: mit `mouse off` schlagen (a) und (b) fehl ───────────────────
-# Ohne diese Gegenprobe waere unklar, ob die obigen Haken wirklich an der
-# Maus-Option haengen oder aus einem anderen Grund (z. B. Standard-Tasten-
-# belegung, Test-Artefakt) gruen wurden — siehe testing-quality.md
+# ── Counter-check: with `mouse off`, (a) and (b) fail ───────────────────────
+# Without this counter-check it would be unclear whether the checks above
+# really depend on the mouse option or turned green for some other reason
+# (e.g. default keybindings, test artifact) — see testing-quality.md
 # "Verify at the Sink, Not the Suite".
 T set-option -g mouse off
 T select-pane -t "$SESSION:0.0"
-check "gegenprobe/start-links-aktiv" 0 "$(active_pane)"
+check "counter-check/start-left-active" 0 "$(active_pane)"
 send_mouse "$DIR/click.seq"
-check "gegenprobe/klick-ignoriert-ohne-maus" 0 "$(active_pane)"
+check "counter-check/click-ignored-without-mouse" 0 "$(active_pane)"
 
 W_LEFT_OFF_BEFORE=$(pane_width 0)
 W_RIGHT_OFF_BEFORE=$(pane_width 1)
 send_mouse "$DIR/drag.seq"
 W_LEFT_OFF_AFTER=$(pane_width 0)
 W_RIGHT_OFF_AFTER=$(pane_width 1)
-echo "== Gegenprobe (mouse off) ziehen: links ${W_LEFT_OFF_BEFORE}->${W_LEFT_OFF_AFTER}, rechts ${W_RIGHT_OFF_BEFORE}->${W_RIGHT_OFF_AFTER} =="
-check "gegenprobe/breite-unveraendert-links"  "$W_LEFT_OFF_BEFORE"  "$W_LEFT_OFF_AFTER"
-check "gegenprobe/breite-unveraendert-rechts" "$W_RIGHT_OFF_BEFORE" "$W_RIGHT_OFF_AFTER"
+echo "== counter-check (mouse off) drag: left ${W_LEFT_OFF_BEFORE}->${W_LEFT_OFF_AFTER}, right ${W_RIGHT_OFF_BEFORE}->${W_RIGHT_OFF_AFTER} =="
+check "counter-check/width-unchanged-left"  "$W_LEFT_OFF_BEFORE"  "$W_LEFT_OFF_AFTER"
+check "counter-check/width-unchanged-right" "$W_RIGHT_OFF_BEFORE" "$W_RIGHT_OFF_AFTER"
 
-printf '── mouse-check: %d bestanden, %d fehlgeschlagen ──\n' "$PASS" "$FAIL"
+printf '── mouse-check: %d passed, %d failed ──\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

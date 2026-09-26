@@ -5,9 +5,9 @@ import { osc8 } from '../../osc8.js';
 import { sortFiles } from '../activate.js';
 
 export function Files(props: { data: FileItem[]; focused: boolean; cursor: number }) {
-  if (props.data.length === 0) return <Text dimColor>noch keine Dateien</Text>;
-  // Dieselbe Sortierung, die auch die Enter-Taste benutzt (activate.ts) —
-  // getrennte Kopien würden auseinanderlaufen und die falsche Datei öffnen.
+  if (props.data.length === 0) return <Text dimColor>no files yet</Text>;
+  // The same sort the Enter key also uses (activate.ts) — separate copies
+  // would drift apart and open the wrong file.
   const shown = sortFiles(props.data).slice(0, 8);
   return (
     <>

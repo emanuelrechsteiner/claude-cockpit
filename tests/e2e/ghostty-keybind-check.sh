@@ -1,63 +1,64 @@
 #!/usr/bin/env bash
-# Prueft die Ghostty-Tastenbelegung des Cockpits — die Datei UND, falls Ghostty
-# installiert ist, wie Ghostty sie tatsaechlich auflöst.
+# Checks Cockpit's Ghostty keybindings — the file itself AND, if Ghostty is
+# installed, how Ghostty actually resolves it.
 #
-# Warum es diese Pruefung gibt (2026-08-04): ⌘1-6 erreichte das Dashboard nicht,
-# obwohl tmux-Bindungen und Dashboard beide nachweislich korrekt waren. Ursache
-# lag ganz am Anfang der Kette: Ghostty fuehrt je Taste ZWEI Steckplaetze — die
-# physische Taste (`physical:one` / intern `digit_1`) und das erzeugte Zeichen
-# (`one` / intern `1`) — und belegt in seiner Vorgabe BEIDE mit `goto_tab`.
-# Die erste Fassung des Schnipsels band nur den uebersetzten Steckplatz; der
-# physische blieb beim Tab-Wechsel, und der gewinnt beim Tastendruck.
+# Why this check exists (2026-08-04): ⌘1-6 didn't reach the dashboard, even
+# though tmux bindings and the dashboard were both demonstrably correct. The
+# cause sat right at the start of the chain: Ghostty carries TWO slots per
+# key — the physical key (`physical:one` / internally `digit_1`) and the
+# character produced (`one` / internally `1`) — and its default assigns BOTH
+# to `goto_tab`. The first version of the snippet bound only the translated
+# slot; the physical one stayed on the tab switch, and that one wins on a
+# keypress.
 #
-# Diese Pruefung faengt genau diesen Rueckfall.
+# This check catches exactly that regression.
 #
-# Aufruf:  bash tests/e2e/ghostty-keybind-check.sh
+# Usage:  bash tests/e2e/ghostty-keybind-check.sh
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 SNIPPET="config/ghostty-snippet.conf"
 
 PASS=0; FAIL=0
-check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] erwartet=%s bekommen=%s\n' "$1" "$2" "$3"; fi; }
+check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] expected=%s got=%s\n' "$1" "$2" "$3"; fi; }
 
-[ -f "$SNIPPET" ] || { echo "Schnipsel fehlt: $SNIPPET" >&2; exit 1; }
+[ -f "$SNIPPET" ] || { echo "Snippet missing: $SNIPPET" >&2; exit 1; }
 
-# ── A) Der Schnipsel selbst: beide Steckplaetze je Ziffer ────────────────────
+# ── A) The snippet itself: both slots per digit ───────────────────────────────
 for n in one two three four five six seven; do
-  check "schnipsel/physical-$n" 1 "$(grep -c "^keybind = cmd+physical:$n=text:" "$SNIPPET")"
-  check "schnipsel/logisch-$n"  1 "$(grep -c "^keybind = cmd+$n=text:" "$SNIPPET")"
+  check "snippet/physical-$n" 1 "$(grep -c "^keybind = cmd+physical:$n=text:" "$SNIPPET")"
+  check "snippet/logical-$n"  1 "$(grep -c "^keybind = cmd+$n=text:" "$SNIPPET")"
 done
-check "schnipsel/vierzehn-bindungen" 14 "$(grep -c '^keybind = cmd+' "$SNIPPET")"
+check "snippet/fourteen-bindings" 14 "$(grep -c '^keybind = cmd+' "$SNIPPET")"
 
-# ── B) Ghostty loest es auf wie erwartet (nur wenn installiert UND der Nutzer
-#      den Schnipsel uebernommen hat) ─────────────────────────────────────────
+# ── B) Ghostty resolves it as expected (only if installed AND the user has
+#      adopted the snippet) ───────────────────────────────────────────────────
 GH=/Applications/Ghostty.app/Contents/MacOS/ghostty
 if [ -x "$GH" ] && [ -f "$HOME/.config/ghostty/config" ] \
    && grep -q 'ck1' "$HOME/.config/ghostty/config" 2>/dev/null; then
-  check "ghostty/konfiguration-gueltig" "" "$("$GH" +validate-config 2>&1)"
+  check "ghostty/config-valid" "" "$("$GH" +validate-config 2>&1)"
   KB=$("$GH" +list-keybinds 2>/dev/null)
-  # Kein goto_tab mehr auf 1-7 — das war der Fehler (7 seit 2026-09-24).
-  check "ghostty/kein-goto_tab-auf-1-7" 0 "$(grep -cE 'super\+(digit_)?[1-7]=goto_tab' <<<"$KB")"
-  # Alle vierzehn Steckplaetze zeigen auf das Cockpit.
-  check "ghostty/vierzehn-cockpit-bindungen" 14 "$(grep -cE 'super\+(digit_)?[1-7]=text:.*ck[1-7]' <<<"$KB")"
-  # NICHT zu viel gekapert: 8 muss weiter Tabs wechseln.
-  check "ghostty/8-unberuehrt" 2 "$(grep -cE 'super\+(digit_)?8=goto_tab' <<<"$KB")"
+  # No more goto_tab on 1-7 — that was the bug (7 since 2026-09-24).
+  check "ghostty/no-goto_tab-on-1-7" 0 "$(grep -cE 'super\+(digit_)?[1-7]=goto_tab' <<<"$KB")"
+  # All fourteen slots point at Cockpit.
+  check "ghostty/fourteen-cockpit-bindings" 14 "$(grep -cE 'super\+(digit_)?[1-7]=text:.*ck[1-7]' <<<"$KB")"
+  # NOT too much captured: 8 must still switch tabs.
+  check "ghostty/8-untouched" 2 "$(grep -cE 'super\+(digit_)?8=goto_tab' <<<"$KB")"
 else
-  echo "  (Ghostty-Teil uebersprungen: nicht installiert oder Schnipsel nicht uebernommen)"
+  echo "  (Ghostty part skipped: not installed, or the snippet was not adopted)"
 fi
 
-# ── C) Sichtbare Vorbedingung: laeuft Ghostty ueberhaupt? (kein Pass/Fail) ────
-# A) und B) pruefen ausschliesslich die KONFIGURATIONSDATEI und wie das
-# Ghostty-BINARY sie statisch aufloest — das ist kein Nachweis, dass die
-# GERADE LAUFENDE Terminalsitzung Ghostty ist. "17/17 gruen" bedeutet daher
-# nicht "Kette ⌘1-6 -> Dashboard geschlossen". TERM_PROGRAM ist fuer diese
-# Frage ungeeignet, sobald tmux angehaengt ist: tmux ueberschreibt es fuer
-# jeden Pane-Prozess auf "tmux" (gemessen 2026-09-23) — deshalb Prozessliste.
+# ── C) Visible precondition: is Ghostty even running? (not a pass/fail) ──────
+# A) and B) check ONLY the CONFIG FILE and how the Ghostty BINARY resolves it
+# statically — that is no proof that the CURRENTLY RUNNING terminal session
+# is Ghostty. "17/17 green" therefore does not mean "chain ⌘1-6 -> dashboard
+# closed". TERM_PROGRAM is unsuitable for this question once tmux is
+# attached: tmux overwrites it to "tmux" for every pane process (measured
+# 2026-09-23) — hence the process list.
 if pgrep -x ghostty >/dev/null 2>&1 || pgrep -f '/Applications/Ghostty.app/Contents/MacOS/ghostty' >/dev/null 2>&1; then
-  echo "  Vorbedingung: Ghostty läuft als Prozess — ⌘1-7 kann diese Sitzung grundsätzlich erreichen."
+  echo "  Precondition: Ghostty is running as a process — ⌘1-7 can in principle reach this session."
 else
-  echo "  ⚠ Vorbedingung NICHT erfüllt: Ghostty läuft NICHT — ⌘1-7 kann keine laufende Terminalsitzung erreichen, auch wenn A) und B) oben grün sind."
+  echo "  ⚠ Precondition NOT met: Ghostty is NOT running — ⌘1-7 cannot reach any running terminal session, even if A) and B) above are green."
 fi
 
-printf '── ghostty-keybind-check: %d bestanden, %d fehlgeschlagen ──\n' "$PASS" "$FAIL"
+printf '── ghostty-keybind-check: %d passed, %d failed ──\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

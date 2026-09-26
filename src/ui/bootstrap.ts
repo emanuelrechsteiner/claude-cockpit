@@ -4,21 +4,22 @@ import { loadRules } from '../rules.js';
 import { listPlugins } from '../plugins/actions.js';
 
 /**
- * Verkabelung des Dashboards: woher es liest, welche Sitzung es meint.
- * Bewusst getrennt von app.tsx — dort geht es um Darstellung, hier um Pfade.
+ * Wiring for the dashboard: where it reads from, which session it means.
+ * Deliberately kept separate from app.tsx — that file is about rendering,
+ * this one is about paths.
  */
 const HOME = process.env['HOME'] ?? '';
 export const COCKPIT_DIR = process.env['COCKPIT_DIR'] ?? `${HOME}/.claude/cockpit`;
 export const SETTINGS_PATH = process.env['COCKPIT_SETTINGS'] ?? `${HOME}/.claude/settings.json`;
 export const TARGET_CWD = process.env['COCKPIT_TARGET_CWD'];
 
-/** Kommandozeilen-Ueberschreibung, damit Pruefstaende ohne echte Sitzung laufen. */
+/** Command-line override so test rigs can run without a real session. */
 function argOf(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-/** Aufloesungslogik samt Begruendung in collect/session.ts (dort auch geprueft). */
+/** Resolution logic plus rationale live in collect/session.ts (also tested there). */
 export function resolveSession(): CurrentSession {
   return resolveSessionIn(COCKPIT_DIR, TARGET_CWD);
 }
@@ -28,8 +29,8 @@ export function buildCollector(session: CurrentSession): Collector {
     argOf('--events') ?? `${COCKPIT_DIR}/events-${session.session_id ?? 'unknown'}.jsonl`;
   const transcriptPath = argOf('--transcript') ?? session.transcript_path;
   const rulesPath = argOf('--rules') ?? `${COCKPIT_DIR}/config/rules.json`;
-  // Ohne Sitzungskennung KEIN Briefkastenpfad: eine geratene Datei waere
-  // schlimmer als keine — die Karten sagen dann ehrlich "wartet".
+  // No mailbox path without a session id: a guessed file would be worse than
+  // none — the cards then honestly say "waiting".
   const statusPath =
     argOf('--status') ??
     (session.session_id !== undefined

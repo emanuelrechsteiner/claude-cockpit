@@ -37,23 +37,23 @@ describe('parallel dispatch in the same second', () => {
   });
 });
 
-describe('the Welle workflow (derived from subagent hook events)', () => {
+describe('the Wave workflow (derived from subagent hook events)', () => {
   it('builds one row per subagent, in start order, subject = description', () => {
     const s = reduceEvents(
       [
-        start(1, 'backend-agent', 'Welle 1 / A: Tresor-Kern bauen'),
-        start(2, 'ui-agent', 'Welle 1 / B: Karte 4'),
-        start(3, 'testing-agent', 'Welle 1 / C: Tests'),
+        start(1, 'backend-agent', 'Wave 1 / A: build vault core'),
+        start(2, 'ui-agent', 'Wave 1 / B: card 4'),
+        start(3, 'testing-agent', 'Wave 1 / C: tests'),
         stop(4, 'backend-agent'),
       ],
       emptyEventState(),
     );
     const wave = s.workflows.find((w) => w.source === 'wave');
-    expect(wave).toMatchObject({ name: 'Welle', done: 1, total: 3 });
+    expect(wave).toMatchObject({ name: 'Wave', done: 1, total: 3 });
     expect(wave?.tasks.map((t) => [t.subject, t.status])).toEqual([
-      ['Welle 1 / A: Tresor-Kern bauen', 'completed'],
-      ['Welle 1 / B: Karte 4', 'in_progress'],
-      ['Welle 1 / C: Tests', 'in_progress'],
+      ['Wave 1 / A: build vault core', 'completed'],
+      ['Wave 1 / B: card 4', 'in_progress'],
+      ['Wave 1 / C: tests', 'in_progress'],
     ]);
   });
 
@@ -66,7 +66,7 @@ describe('the Welle workflow (derived from subagent hook events)', () => {
     expect(wave?.tasks[0]).toMatchObject({ subject: 'cleanup-agent', status: 'in_progress' });
   });
 
-  it('does NOT react to TaskCreated/TaskUpdated — Tasks and Welle are independent counters', () => {
+  it('does NOT react to TaskCreated/TaskUpdated — Tasks and Wave are independent counters', () => {
     const s = reduceEvents(
       [start(1, 'backend-agent', 'A'), created(2, 't1', 'Plan')],
       emptyEventState(),
@@ -77,7 +77,7 @@ describe('the Welle workflow (derived from subagent hook events)', () => {
     expect(wave).toMatchObject({ done: 0, total: 1 });
   });
 
-  it('marks a subagent lost on session resume as a finished (completed) Welle row, not stuck in_progress', () => {
+  it('marks a subagent lost on session resume as a finished (completed) Wave row, not stuck in_progress', () => {
     const afterStart = reduceEvents([start(1, 'visual-qa-agent', 'QA')], emptyEventState());
     const waveBefore = afterStart.workflows.find((w) => w.source === 'wave');
     expect(waveBefore).toMatchObject({ done: 0, total: 1 });
@@ -131,25 +131,25 @@ describe('workflowBlocks (Card 4 row layout, no UI framework)', () => {
       ],
     };
     const waveWf = {
-      name: 'Welle',
+      name: 'Wave',
       source: 'wave' as const,
       done: 0,
       total: 1,
-      tasks: [{ id: 'a1', subject: 'Welle 1 / A', status: 'in_progress' as const }],
+      tasks: [{ id: 'a1', subject: 'Wave 1 / A', status: 'in_progress' as const }],
     };
     const blocks = workflowBlocks([tasksWf, waveWf], 4);
     expect(blocks).toHaveLength(2);
     // Tasks: bar at row 0, two tasks at rows 1 and 2.
     expect(blocks[0]).toMatchObject({ name: 'Tasks', barRow: 0 });
     expect(blocks[0].taskRows.map((r) => r.row)).toEqual([1, 2]);
-    // Welle continues right after: bar at row 3, its one task at row 4.
-    expect(blocks[1]).toMatchObject({ name: 'Welle', barRow: 3 });
+    // Wave continues right after: bar at row 3, its one task at row 4.
+    expect(blocks[1]).toMatchObject({ name: 'Wave', barRow: 3 });
     expect(blocks[1].taskRows.map((r) => r.row)).toEqual([4]);
   });
 
   it('a single block alone still starts at row 0', () => {
     const waveWf = {
-      name: 'Welle',
+      name: 'Wave',
       source: 'wave' as const,
       done: 0,
       total: 1,
@@ -157,7 +157,7 @@ describe('workflowBlocks (Card 4 row layout, no UI framework)', () => {
     };
     const blocks = workflowBlocks([{ name: 'Tasks', source: 'tasks' as const, done: 0, total: 0, tasks: [] }, waveWf], 4);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toMatchObject({ name: 'Welle', barRow: 0 });
+    expect(blocks[0]).toMatchObject({ name: 'Wave', barRow: 0 });
     expect(blocks[0].taskRows.map((r) => r.row)).toEqual([1]);
   });
 });

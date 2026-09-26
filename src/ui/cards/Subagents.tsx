@@ -14,7 +14,7 @@ function clip(s: string): string {
 /**
  * Card 3. Every subagent gets two lines: the title (status glyph, agent
  * type, model · effort · elapsed) and a status line with what it is doing —
- * its task while it runs, "idle · fertig vor N min" once it is done.
+ * its task while it runs, "idle · done N min ago" once it is done.
  * Row logic and data precedence: subagent-view.ts (subagentRows).
  */
 export function Subagents(props: {
@@ -32,7 +32,7 @@ export function Subagents(props: {
     sessionModel: props.sessionModel,
     now: Date.now(),
   });
-  if (rows.length === 0) return <Text dimColor>keine Subagenten</Text>;
+  if (rows.length === 0) return <Text dimColor>no subagents</Text>;
   const shown = rows.slice(0, MAX_ROWS);
   return (
     <>
@@ -48,7 +48,7 @@ export function Subagents(props: {
           </Text>
         </React.Fragment>
       ))}
-      {rows.length > MAX_ROWS ? <Text dimColor>… +{rows.length - MAX_ROWS} weitere</Text> : null}
+      {rows.length > MAX_ROWS ? <Text dimColor>… +{rows.length - MAX_ROWS} more</Text> : null}
     </>
   );
 }

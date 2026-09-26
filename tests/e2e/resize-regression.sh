@@ -1,52 +1,52 @@
 #!/usr/bin/env bash
-# Regression gegen GEISTERRAHMEN (2026-08-04, angepasst auf Ink 7.1.1 +
-# Alternate Screen — selbes Datum, dritte Fassung).
+# Regression against GHOST FRAMES (2026-08-04, adapted for Ink 7.1.1 +
+# Alternate Screen — same date, third version).
 #
-# Warum diese Pruefung nicht in vitest passt: Der Fehler entsteht erst im echten
-# Terminal. Ink loescht seinen vorherigen Rahmen, indem es den Cursor um die
-# ZULETZT gezeichnete Zeilenzahl hochfaehrt. Aendert sich die Terminalbreite,
-# brechen die Zeilen anders um, die gemerkte Zahl stimmt nicht mehr — der alte
-# Rahmen bleibt stehen. Am 2026-08-04 im laufenden Dashboard gemessen: SIEBEN
-# gestapelte Rahmen. Ein Renderer-Test ohne echtes tty kann das nicht sehen.
+# Why this check doesn't fit in vitest: the bug only manifests in a real
+# terminal. Ink erases its previous frame by moving the cursor up by the LAST
+# rendered line count. When the terminal width changes, the lines wrap
+# differently, so the remembered count no longer matches — the old frame
+# stays put. Measured on the running dashboard on 2026-08-04: SEVEN stacked
+# frames. A renderer test without a real tty cannot see this.
 #
-# Alternate Screen aendert die MESSMETHODE, nicht die Fragestellung: Waehrend
-# die App im Alternate Screen laeuft, gibt es KEINEN Scrollback — empirisch
-# geprueft per `tmux capture-pane -S -` gegen eine Alternate-Screen-Testpane:
-# das Ergebnis war exakt die sichtbare Pane-Hoehe, keine Zeile von VOR dem
-# Bildschirmwechsel war erreichbar. `-S -` ist damit im Alternate Screen ein
-# No-op. Diese Pruefung erfasst deshalb bewusst nur die sichtbare Pane
-# (`capture-pane -p` ohne `-S`) und macht die Pane grosszuegig hoch (200 statt
-# vormals 50 Zeilen), damit auch mehrere gestapelte Geisterrahmen vollstaendig
-# im sichtbaren Bereich liegen — sonst wuerde die Pruefung an einem zu kleinen
-# Fenster gruen, weil ueberschuessige Rahmen einfach ausserhalb der Pane
-# liegen, nicht weil der Fehler behoben waere.
+# Alternate Screen changes the MEASUREMENT METHOD, not the question: while
+# the app runs in Alternate Screen, there is NO scrollback — empirically
+# checked via `tmux capture-pane -S -` against an Alternate-Screen test pane:
+# the result was exactly the visible pane height, no line from BEFORE the
+# screen switch was reachable. `-S -` is therefore a no-op in Alternate
+# Screen. This check therefore deliberately captures only the visible pane
+# (`capture-pane -p` without `-S`) and makes the pane generously tall (200
+# instead of the previous 50 lines), so multiple stacked ghost frames fully
+# fit in the visible area — otherwise the check would turn green on a
+# too-small window because excess frames simply sit outside the pane, not
+# because the bug was fixed.
 #
-# WICHTIGER BEFUND (Schritt 6, Negativkontrolle): eine Folge EINZELNER
-# `resize-window`-Aufrufe mit Pause dazwischen (die urspruengliche Fassung
-# dieser Pruefung) loest den Fehler NICHT aus — weder mit noch ohne Fix. Erst
-# ein SCHNELLER BURST aufeinanderfolgender `resize-window`-Aufrufe OHNE Pause
-# (das simuliert ein echtes Ziehen am Fensterrand, bei dem viele SIGWINCH kurz
-# hintereinander eintreffen) reproduziert die Race Condition zuverlaessig:
-# gemessen 8 -> 13 Kartenrahmen (`╭`) und ein doppeltes "· Team Lead" bei Ink
-# 5.2.1 + React 18.3.0 ohne Workaround. Mit dem Burst als Reiz ist diese
-# Pruefung nachweislich DISKRIMINIEREND (siehe Bericht): sie schlaegt fehl,
-# wenn der Workaround in app.tsx (Bildschirm-Wischen bei resize) fehlt — auch
-# mit Ink 7.1.1 + Alternate Screen, dessen eigene Resize-Korrektur (PR #828)
-# denselben Burst NICHT uebersteht.
+# IMPORTANT FINDING (step 6, negative control): a sequence of INDIVIDUAL
+# `resize-window` calls with a pause in between (the original version of this
+# check) does NOT trigger the bug — neither with nor without the fix. Only a
+# FAST BURST of consecutive `resize-window` calls WITHOUT a pause (which
+# simulates a real window-edge drag, where many SIGWINCH arrive in quick
+# succession) reliably reproduces the race condition: measured 8 -> 13 card
+# frames (`╭`) and a duplicated "· Team Lead" on Ink 5.2.1 + React 18.3.0
+# without the workaround. With the burst as the stimulus, this check is
+# demonstrably DISCRIMINATING (see the report): it fails when the workaround
+# in app.tsx (screen wipe on resize) is missing — even with Ink 7.1.1 +
+# Alternate Screen, whose own resize fix (PR #828) does NOT survive the same
+# burst.
 #
-# Aufbau: eigene tmux-Sitzung in einem Temporaerverzeichnis, das Dashboard laeuft
-# darin mit Attrappen-Daten. Die echte Sitzung des Nutzers wird nie angefasst.
+# Setup: its own tmux session in a temp directory, the dashboard runs in it
+# with stand-in data. The user's real session is never touched.
 #
-# Aufruf:  bash tests/e2e/resize-regression.sh
+# Usage:  bash tests/e2e/resize-regression.sh
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 REPO=$PWD
 
-command -v tmux >/dev/null || { echo "tmux fehlt — Pruefung nicht durchfuehrbar" >&2; exit 1; }
+command -v tmux >/dev/null || { echo "tmux missing — cannot run this check" >&2; exit 1; }
 
 PASS=0; FAIL=0
-check() { # check <name> <erwartet> <bekommen>
-  if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] erwartet=%s bekommen=%s\n' "$1" "$2" "$3"; fi
+check() { # check <name> <expected> <got>
+  if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] expected=%s got=%s\n' "$1" "$2" "$3"; fi
 }
 
 DIR=$(mktemp -d)
@@ -54,11 +54,11 @@ SESSION="cockpit-resize-test-$$"
 cleanup() { tmux kill-session -t "$SESSION" 2>/dev/null; rm -rf "$DIR"; }
 trap cleanup EXIT
 
-# --- Attrappen-Daten ---------------------------------------------------------
-# session-<sid>.json ist seit 2026-08-04 der massgebliche Weg (pro Sitzung);
-# current-session.json ist nur noch Rueckfalllinie fuer Laeufe OHNE
-# COCKPIT_TARGET_CWD. Diese Pruefung setzt TARGET_CWD, braucht also die
-# Sitzungsdatei — mit der globalen allein blieb sie zu Recht rot.
+# --- Stand-in data -------------------------------------------------------------
+# session-<sid>.json has been the authoritative path (per session) since
+# 2026-08-04; current-session.json is now only the fallback for runs WITHOUT
+# COCKPIT_TARGET_CWD. This check sets TARGET_CWD, so it needs the session
+# file — with only the global one it rightly stayed red.
 cat > "$DIR/session-e2e.json" <<EOF
 {"session_id":"e2e","transcript_path":"$DIR/transcript.jsonl","cwd":"$DIR"}
 EOF
@@ -75,51 +75,50 @@ cat > "$DIR/status-e2e.json" <<EOF
                 "seven_day":{"used_percentage":18,"resets_at":$(( $(date +%s) + 200000 ))}}}
 EOF
 
-# --- Dashboard in einer eigenen Sitzung starten ------------------------------
-# --rules explizit: das Regelwerk liegt in der INSTALLATION, nicht im
-# Attrappen-Verzeichnis. Ohne den Pfad bricht loadRules ab (fail-loud) und das
-# Dashboard startet gar nicht erst — genau daran ist die erste Fassung dieses
-# Pruefstands gescheitert.
+# --- Start the dashboard in its own session -----------------------------------
+# --rules explicit: the ruleset lives in the INSTALLATION, not the stand-in
+# directory. Without the path, loadRules aborts (fail-loud) and the dashboard
+# doesn't even start — exactly what the first version of this test rig failed on.
 tmux new-session -d -s "$SESSION" -x 200 -y 200 -c "$REPO" \
   "COCKPIT_DIR='$DIR' COCKPIT_TARGET_CWD='$DIR' exec npx tsx src/ui/app.tsx --rules '$REPO/config/rules.json' 2>'$DIR/err.log'"
 P="$SESSION:0.0"
 
-# Auf den ersten Rahmen warten (npx-Start braucht ein paar Sekunden)
+# Wait for the first frame (npx startup takes a few seconds)
 for _ in $(seq 1 40); do
   tmux capture-pane -p -t "$P" 2>/dev/null | grep -q "Team Lead" && break
   sleep 0.5
 done
 
-# Kein `-S -`: im Alternate Screen ist das ein No-op (siehe Kommentar oben) —
-# die sichtbare Pane IST der vollstaendige erreichbare Zustand.
+# No `-S -`: that's a no-op in Alternate Screen (see comment above) — the
+# visible pane IS the full reachable state.
 frames() { tmux capture-pane -p -t "$P" 2>/dev/null | grep -c "· Team Lead"; }
 
-check "start/genau-ein-rahmen" 1 "$(frames)"
+check "start/exactly-one-frame" 1 "$(frames)"
 
-# --- Der eigentliche Test: BURST aus Groessenaenderungen ohne Pause ----------
-# Simuliert ein echtes Ziehen am Fensterrand (viele SIGWINCH kurz hintereinander).
-# Einzelne resize-window-Aufrufe MIT Pause dazwischen loesen den Fehler
-# nachweislich NICHT aus (siehe Kommentar oben) — nur der Burst tut es.
+# --- The actual test: BURST of resizes without a pause -----------------------
+# Simulates a real window-edge drag (many SIGWINCH in quick succession).
+# Individual resize-window calls WITH a pause in between demonstrably do NOT
+# trigger the bug (see comment above) — only the burst does.
 for w in 190 170 150 130 110 90 70 50 30 25 40 60 80 100 120 140 160 180 200; do
   tmux resize-window -t "$SESSION" -x "$w" -y 200 2>/dev/null
 done
 sleep 1.5
 
-check "nach-burst-groessenaenderungen/genau-ein-rahmen" 1 "$(frames)"
+check "after-burst-resizes/exactly-one-frame" 1 "$(frames)"
 
-# --- Die beiden neuen Karten muessen sichtbar sein und Zahlen zeigen ---------
+# --- The two new cards must be visible and show numbers -----------------------
 SNAP=$(tmux capture-pane -p -t "$P" 2>/dev/null)
-check "karte-kontext-vorhanden"  1 "$(grep -c "Kontext"  <<<"$SNAP" | head -1)"
-check "karte-verbrauch-vorhanden" 1 "$(grep -c "Verbrauch" <<<"$SNAP" | head -1)"
-check "kontext-zeigt-prozent"    1 "$(grep -c "31%" <<<"$SNAP" | head -1)"
-check "verbrauch-zeigt-5std"     1 "$(grep -c "5 Std" <<<"$SNAP" | head -1)"
-check "verbrauch-zeigt-7tage"    1 "$(grep -c "7 Tage" <<<"$SNAP" | head -1)"
+check "card-context-present"  1 "$(grep -c "Context"  <<<"$SNAP" | head -1)"
+check "card-usage-present" 1 "$(grep -c "Usage" <<<"$SNAP" | head -1)"
+check "context-shows-percent"    1 "$(grep -c "31%" <<<"$SNAP" | head -1)"
+check "usage-shows-5h"     1 "$(grep -c "5h" <<<"$SNAP" | head -1)"
+check "usage-shows-7d"    1 "$(grep -c "7d" <<<"$SNAP" | head -1)"
 
-# --- Die nummerierten Karten bleiben unveraendert 1..6 ----------------------
+# --- The numbered cards remain unchanged, 1..6 --------------------------------
 for n in 1 2 3 4 5 6; do
-  check "karte-$n-nummeriert" 1 "$(grep -c "$n · " <<<"$SNAP" | head -1)"
+  check "card-$n-numbered" 1 "$(grep -c "$n · " <<<"$SNAP" | head -1)"
 done
 
-printf '── resize-regression: %d bestanden, %d fehlgeschlagen ──\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ] || { echo "--- Fehlerprotokoll ---"; cat "$DIR/err.log" 2>/dev/null | head -20; }
+printf '── resize-regression: %d passed, %d failed ──\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || { echo "--- error log ---"; cat "$DIR/err.log" 2>/dev/null | head -20; }
 [ "$FAIL" -eq 0 ]

@@ -2,9 +2,9 @@ import React from 'react';
 import { Box, Text } from 'ink';
 
 /**
- * `index` ist optional: reine Anzeigekarten (Kontext, Verbrauch) tragen keine
- * Nummer, weil an ihnen nichts auszuwaehlen ist. Nur nummerierte Karten sind
- * ueber ⌘1-6 anspringbar — die Nummer ist damit ein Versprechen, keine Zierde.
+ * `index` is optional: pure display cards (Context, Usage) carry no number,
+ * because there is nothing to select on them. Only numbered cards are
+ * reachable via ⌘1-6 — the number is therefore a promise, not decoration.
  */
 export function Card(props: { title: string; index?: number; focused: boolean; children: React.ReactNode }) {
   return (

@@ -14,7 +14,7 @@ describe('Collector', () => {
     });
     const state = await c.poll();
     expect(state.errors.length).toBe(2);
-    expect(state.errors[0].reason).toContain('wartet');
+    expect(state.errors[0].reason).toContain('waiting');
   });
 
   it('aggregates fixtures end-to-end, incrementally without duplicates', async () => {

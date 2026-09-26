@@ -20,18 +20,18 @@ export type PluginAction = 'enable' | 'disable' | 'update' | 'reauth';
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9@._-]*$/;
 
 export async function pluginAction(name: string, action: PluginAction, settingsPath: string): Promise<string> {
-  if (!SAFE_NAME.test(name)) throw new Error(`unzulässiger Plugin-Name: ${name}`);
+  if (!SAFE_NAME.test(name)) throw new Error(`invalid plugin name: ${name}`);
   if (action === 'enable' || action === 'disable') {
     const raw = JSON.parse(readFileSync(settingsPath, 'utf8')) as SettingsShape & Record<string, unknown>;
     raw.enabledPlugins = { ...raw.enabledPlugins, [name]: action === 'enable' };
     writeFileSync(settingsPath, JSON.stringify(raw, null, 2) + '\n');
-    return `${action === 'enable' ? 'aktiviert' : 'deaktiviert'} — wirksam ab nächster Session`;
+    return `${action === 'enable' ? 'enabled' : 'disabled'} — takes effect next session`;
   }
   if (action === 'update') {
     await promisify(execFile)('claude', ['plugin', 'update', name], { timeout: 60000 });
-    return 'aktualisiert — wirksam ab nächster Session';
+    return 'updated — takes effect next session';
   }
   const server = name.split('@')[0];
   await promisify(execFile)('claude', ['mcp', 'login', server], { timeout: 15000 });
-  return 'Auth angestoßen — Browser prüfen';
+  return 'auth started — check your browser';
 }

@@ -21,12 +21,12 @@ import { Context } from './cards/Context.js';
 import { Usage } from './cards/Usage.js';
 
 const CARDS: { id: CardId; title: string }[] = [
-  { id: 'model', title: 'Modell & Effort' },
+  { id: 'model', title: 'Model & Effort' },
   { id: 'teamlead', title: 'Team Lead' },
-  { id: 'subagents', title: 'Subagenten' },
+  { id: 'subagents', title: 'Subagents' },
   { id: 'workflows', title: 'Workflows' },
   { id: 'links', title: 'Links' },
-  { id: 'files', title: 'Dateien' },
+  { id: 'files', title: 'Files' },
   { id: 'plugins', title: 'Plugins' },
 ];
 
@@ -44,42 +44,40 @@ function App() {
   const { stdout } = useStdout();
   const { exit } = useApp();
 
-  // ── Geisterrahmen (2026-08-04) ───────────────────────────────────────────
-  // Ink loescht seinen vorherigen Rahmen, indem es den Cursor um die ZULETZT
-  // gezeichnete Zeilenzahl hochfaehrt (log-update). Aendert sich die
-  // Terminalbreite, brechen die Zeilen anders um, die gemerkte Zahl stimmt
-  // nicht mehr — der alte Rahmen bleibt stehen, der neue wird darunter
-  // gezeichnet. Am laufenden Dashboard gemessen: SIEBEN gestapelte Rahmen,
-  // jeder in anderer Breite. Zwei sichtbare Folgen: die Karten erscheinen
-  // mehrfach, und der oberste (tote) Rahmen reagiert auf keine Taste mehr —
-  // was wie eine kaputte Tastensteuerung aussieht, obwohl der Fokus im
-  // lebenden Rahmen korrekt umspringt.
+  // ── Ghost frames (2026-08-04) ────────────────────────────────────────────
+  // Ink erases its previous frame by moving the cursor up by the LAST
+  // rendered line count (log-update). When the terminal width changes, the
+  // lines wrap differently, so the remembered count no longer matches — the
+  // old frame stays put and the new one is drawn below it. Measured on the
+  // running dashboard: SEVEN stacked frames, each at a different width. Two
+  // visible symptoms: the cards appear multiple times, and the topmost
+  // (dead) frame no longer reacts to any key — which looks like broken
+  // keyboard control even though focus correctly moves in the live frame.
   //
-  // Behebung: bei jeder Groessenaenderung Bildschirm UND Rueckblaetterpuffer
-  // loeschen (\x1b[3J).
+  // Fix: on every resize, clear the screen AND the scrollback buffer
+  // (\x1b[3J).
   //
-  // prependListener ist hier LASTTRAGEND, nicht Geschmackssache: Ink haengt
-  // seinen eigenen resize-Horcher im Konstruktor ein, also VOR uns. Ein
-  // normales .on() liefe danach und wuerde den Rahmen wegwischen, den Ink
-  // gerade gezeichnet hat — und Ink zeichnet ihn NICHT nach, weil es einen
-  // unveraenderten Rahmen per Dedupe verwirft (ink.js: `output !==
-  // this.lastOutput`). Genau so blieb die erste Fassung dieser Behebung leer;
-  // der Pruefstand tests/e2e/resize-regression.sh hat es gefangen.
+  // prependListener is LOAD-BEARING here, not a style choice: Ink attaches
+  // its own resize listener in its constructor, i.e. BEFORE us. A plain
+  // .on() would run afterward and would wipe the frame Ink just drew — and
+  // Ink would NOT redraw it, because it discards an unchanged frame via
+  // dedupe (ink.js: `output !== this.lastOutput`). That is exactly why the
+  // first version of this fix did nothing; tests/e2e/resize-regression.sh
+  // caught it.
   //
-  // WEITERHIN NOETIG nach dem Upgrade auf Ink 7.1.1 + Alternate Screen
-  // (2026-08-04, MESSUNG statt Meinung): Ink 7.1.1 enthaelt die offizielle
-  // Resize-Korrektur (PR #828, seit 6.5.1) und Alternate Screen isoliert vom
-  // tmux-Scrollback — beides zusammen haelt einzelne, langsam aufeinander-
-  // folgende Groessenaenderungen sauber. Ein SCHNELLER BURST an
-  // Groessenaenderungen ohne Pause (echtes Ziehen am Fensterrand) bricht
-  // die native Korrektur trotzdem: gemessen 8 -> 13 Kartenrahmen und ein
-  // doppeltes "Team Lead" OHNE diesen Wisch-Handler, sauber (8, einfach) MIT
-  // ihm — jeweils bei identischer Ink-/React-Version. Diese Behebung bleibt
-  // deshalb bestehen. Test: tests/e2e/resize-regression.sh (Burst-Reiz).
+  // STILL NEEDED after the upgrade to Ink 7.1.1 + Alternate Screen
+  // (2026-08-04, MEASURED, not assumed): Ink 7.1.1 includes the official
+  // resize fix (PR #828, since 6.5.1) and Alternate Screen isolates from
+  // tmux scrollback — together these keep single, slowly-successive resizes
+  // clean. A FAST BURST of resizes without a pause (a real window-edge drag)
+  // still breaks the native fix: measured 8 -> 13 card frames and a
+  // duplicated "Team Lead" WITHOUT this wipe handler, clean (8, single)
+  // WITH it — same Ink/React version in both cases. This fix therefore
+  // stays in place. Test: tests/e2e/resize-regression.sh (burst stimulus).
   useEffect(() => {
     if (!stdout) return;
     const wipe = () => stdout.write('\x1b[2J\x1b[3J\x1b[H');
-    wipe(); // Reste einer Vorgaengerinstanz im Pane
+    wipe(); // leftovers from a previous instance in the pane
     stdout.prependListener('resize', wipe);
     return () => {
       stdout.off('resize', wipe);
@@ -95,11 +93,11 @@ function App() {
       }
       void collector.poll().then((s) => {
         setState(s);
-        // Der Zeitstempel wird ANGEZEIGT, und das ist Absicht: Ink verwirft
-        // einen Rahmen, dessen Text sich nicht geaendert hat. Aendert sich nur
-        // die Pane-HOEHE, bleibt der Text identisch — nach dem Loeschen bliebe
-        // das Pane dann leer. Die mitlaufende Uhr garantiert, dass spaetestens
-        // beim naechsten Takt wieder gezeichnet wird.
+        // The timestamp is DISPLAYED, and that is intentional: Ink discards
+        // a frame whose text hasn't changed. If only the pane HEIGHT
+        // changes, the text stays identical — after clearing, the pane
+        // would then stay blank. The running clock guarantees that it gets
+        // redrawn at the latest on the next tick.
         setStamp(Date.now());
       });
     };
@@ -112,10 +110,10 @@ function App() {
     if (!isRawModeSupported) return;
     setRawMode(true);
     const seq = new KeySequencer((action: KeyAction) => {
-      // Ein Schriftzeichen bei gewaehlter Karte heisst: der Nutzer meinte
-      // Claude. Fokus zurueck, Zeichen mit hinueber — nichts geht verloren.
-      // Das gilt auch fuer 'q': waere es hier ein Beenden-Befehl, verschwaende
-      // ein getipptes Wort mit q das ganze Dashboard.
+      // A printable character while a card is selected means: the user
+      // meant Claude. Focus goes back, the character is forwarded — nothing
+      // is lost. That also applies to 'q': if it were a quit command here,
+      // a typed word containing q would close the whole dashboard.
       const strayText =
         action.type === 'text' ? action.text : action.type === 'quit' && focus !== null ? 'q' : null;
       if (strayText !== null) {
@@ -132,9 +130,9 @@ function App() {
         setActionCursor(null);
       } else if (action.type === 'escape') {
         setActionCursor((ac) => {
-          if (ac !== null) return null; // erst die Aktionsleiste schliessen …
+          if (ac !== null) return null; // close the action bar first …
           setFocus(null);
-          returnFocusLeft(); // … dann erst zurueck zu Claude
+          returnFocusLeft(); // … only then back to Claude
           return null;
         });
       } else if (action.type === 'up') setCursor((c) => Math.max(0, c - 1));
@@ -159,18 +157,18 @@ function App() {
     const card = CARDS[focus].id;
     if (card === 'model') {
       const model = MODEL_CHOICES[clampIndex(cursor, MODEL_CHOICES.length)];
-      // Erstes ⏎ oeffnet die Effort-Leiste — ausser das Modell kennt keinen Effort.
+      // First ⏎ opens the effort bar — unless the model has no effort levels.
       if (actionCursor === null && model.effort) {
         setActionCursor(DEFAULT_EFFORT_INDEX);
         return;
       }
       const effort = actionCursor === null ? null : EFFORT_LEVELS[actionCursor];
       const summary = effort === null ? model.label : `${model.label} · ${effort}`;
-      setLastSent(`sende ${summary} …`);
+      setLastSent(`sending ${summary} …`);
       void submitToLeft(switchCommands(model, effort))
-        .then(() => setLastSent(`gesendet: ${summary}`))
-        .catch((e: unknown) => setLastSent(`Fehler: ${String(e).slice(0, 50)}`));
-      // Zurueck zu Claude: dort erscheint die Bestaetigung (oder die Ablehnung).
+        .then(() => setLastSent(`sent: ${summary}`))
+        .catch((e: unknown) => setLastSent(`Error: ${String(e).slice(0, 50)}`));
+      // Back to Claude: the confirmation (or rejection) appears there.
       setActionCursor(null);
       setFocus(null);
       returnFocusLeft();
@@ -186,16 +184,16 @@ function App() {
       const action = PLUGIN_ACTIONS[actionCursor] as PluginAction;
       void pluginAction(plugin.name, action, SETTINGS_PATH)
         .then((msg) => setPending((m) => new Map(m).set(plugin.name, msg)))
-        .catch((e: unknown) => setPending((m) => new Map(m).set(plugin.name, `Fehler: ${String(e).slice(0, 50)}`)));
+        .catch((e: unknown) => setPending((m) => new Map(m).set(plugin.name, `Error: ${String(e).slice(0, 50)}`)));
       setActionCursor(null);
       return;
     }
-    // Auswahl rechnet activate.ts (geprüft), das Öffnen bleibt hier.
+    // The selection is computed by activate.ts (tested); opening stays here.
     const target = resolveOpenTarget(card, state, cursor);
     if (target) execFile('open', openArgs(target));
   }
 
-  if (!state) return <Text>lade…</Text>;
+  if (!state) return <Text>loading…</Text>;
   const plugins = state.plugins.map((p) => ({ ...p, pendingChange: pending.get(p.name) ?? p.pendingChange }));
   const body: Record<CardId, React.ReactNode> = {
     model: (
@@ -223,17 +221,17 @@ function App() {
     files: <Files data={state.files} focused={focus === 5} cursor={cursor} />,
     plugins: <Plugins data={plugins} focused={focus === 6} cursor={cursor} actionCursor={actionCursor} />,
   };
-  const clock = new Date(stamp).toLocaleTimeString('de-DE', { hour12: false });
+  const clock = new Date(stamp).toLocaleTimeString('en-US', { hour12: false });
   return (
     <Box flexDirection="column">
-      {/* Zwei reine Anzeigekarten, bewusst OHNE Nummer und ganz oben: sie sind
-          Statuswerte, an denen es nichts auszuwaehlen gibt. Die Nummern gehoeren
-          den bedienbaren Karten — seit 2026-09-24 sieben (⌘1 = Modell & Effort,
-          Nutzerwunsch; die uebrigen rueckten um eins nach unten). */}
-      <Card title="Kontext" focused={false}>
+      {/* Two pure display cards, deliberately WITHOUT a number and right at
+          the top: they are status values with nothing to select. Numbers
+          belong to the operable cards — seven since 2026-09-24 (⌘1 = Model &
+          Effort, per the user's wish; the rest moved down by one). */}
+      <Card title="Context" focused={false}>
         <Context data={state.status} />
       </Card>
-      <Card title="Verbrauch" focused={false}>
+      <Card title="Usage" focused={false}>
         <Usage data={state.status} />
       </Card>
       {CARDS.map((c, i) => (
@@ -242,41 +240,41 @@ function App() {
         </Card>
       ))}
       {state.errors.map((e) =>
-        e.reason.startsWith('wartet') ? (
+        e.reason.startsWith('waiting') ? (
           <Text key={e.source} dimColor>
             {e.source}: {e.reason}
           </Text>
         ) : (
           <Text key={e.source} color="red">
-            Quelle nicht lesbar: {e.source} — {e.reason.slice(0, 60)}
+            source unreadable: {e.source} — {e.reason.slice(0, 60)}
           </Text>
         ),
       )}
       {session.session_id === undefined && (
-        <Text dimColor>wartet auf Claude-Session in diesem Ordner…</Text>
+        <Text dimColor>waiting for a Claude session in this folder…</Text>
       )}
-      {/* Der Fokus liegt jetzt WIRKLICH hier, wenn eine Karte gewählt ist —
-          das muss sichtbar sein, sonst tippt man versehentlich ins Dashboard
-          statt zu Claude. Bei gewählter Karte hebt die Zeile sich deshalb ab. */}
+      {/* Focus is now REALLY here when a card is selected — that has to be
+          visible, otherwise you type into the dashboard by mistake instead
+          of into Claude. The line stands out while a card is selected. */}
       {focus !== null ? (
         <Text color="cyan">
-          ▶ Tastatur hier · ↑↓ wählen · ⏎ öffnen · esc zurück zu Claude · Stand {clock}
+          ▶ keyboard here · ↑↓ select · ⏎ open · esc back to Claude · as of {clock}
         </Text>
       ) : (
-        <Text dimColor>⌘1-7 Karte wählen · q Ende · Stand {clock}</Text>
+        <Text dimColor>⌘1-7 select card · q quit · as of {clock}</Text>
       )}
     </Box>
   );
 }
 
-// Alternate Screen (ink 7.0.0+, siehe RenderOptions.alternateScreen): dieselbe
-// Technik wie vim/htop/less — das Dashboard bekommt eine eigene Bildschirmseite,
-// isoliert vom tmux-Scrollback der Pane. Das behebt NICHT die Zeilenrechnung aus
-// dem Geisterrahmen-Kommentar oben: log-update zaehlt weiterhin LOGISCHE statt
-// PHYSISCHE Zeilen, und Ink selbst warnt in den RenderOptions-Docs, dass beim
-// Verschmaelern weiterhin "ghost lines" auftreten koennen (Ink-Issue #907, bis
-// heute offen — PR #916 mit einer zeilenumbruch-bewussten Korrektur wurde NICHT
-// gemerged, siehe README "Geisterrahmen"). Alternate Screen sorgt nur dafuer,
-// dass ein Rechenfehler nicht in den fuer den Nutzer sichtbaren Rueckblaetterpuffer
-// durchschlaegt — es korrigiert den Rechenfehler selbst nicht.
+// Alternate Screen (ink 7.0.0+, see RenderOptions.alternateScreen): the same
+// technique as vim/htop/less — the dashboard gets its own screen page,
+// isolated from the pane's tmux scrollback. This does NOT fix the line-count
+// math from the ghost-frame comment above: log-update still counts LOGICAL
+// rather than PHYSICAL lines, and Ink's own RenderOptions docs warn that
+// "ghost lines" can still occur when narrowing (Ink issue #907, still open —
+// PR #916 with a wrap-aware fix was NOT merged, see README "Ghost frames").
+// Alternate Screen only keeps a computation error from bleeding into the
+// scrollback buffer the user can see — it does not correct the computation
+// error itself.
 render(<App />, { alternateScreen: true });

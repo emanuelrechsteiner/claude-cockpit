@@ -31,7 +31,7 @@ describe('pluginAction enable/disable', () => {
   it('toggles the flag in settings.json and reports pending change', async () => {
     const p = fixture();
     const msg = await pluginAction('pixel-plugin@pixel-plugin', 'enable', p);
-    expect(msg).toContain('nächster Session');
+    expect(msg).toContain('next session');
     const raw = JSON.parse(readFileSync(p, 'utf8')) as { enabledPlugins: Record<string, boolean> };
     expect(raw.enabledPlugins['pixel-plugin@pixel-plugin']).toBe(true);
     await pluginAction('pixel-plugin@pixel-plugin', 'disable', p);

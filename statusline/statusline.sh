@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Cockpit-Statusline: Modell | Kontext% (Ampel 50/75) | Kosten | Branch
-# Ersetzt ~/.claude/statusline-command.sh (Plugins zeigt jetzt die Cockpit-Karte 6).
+# Cockpit status line: model | context% (traffic light 50/75) | cost | branch
+# Replaces ~/.claude/statusline-command.sh (plugins are now shown by Cockpit card 6).
 #
-# Zweitaufgabe seit 2026-08-04: BRIEFKASTEN fuer das Dashboard.
-# Claude Code uebergibt dieses JSON NUR der Statuszeile, auf stdin, bei jeder
-# Aktualisierung. Das Dashboard ist ein eigener Prozess und sieht es nie. Die
-# Statuszeile legt die paar Felder deshalb als status.json ab; das Dashboard
-# liest sie beim Abfragetakt. Ohne diesen Umweg gaebe es weder eine
-# Kontext- noch eine Verbrauchskarte — die Daten existieren sonst nirgends.
+# Second job since 2026-08-04: MAILBOX for the dashboard.
+# Claude Code hands this JSON ONLY to the status line, on stdin, on every
+# refresh. The dashboard is a separate process and never sees it. The status
+# line therefore drops the few fields as status.json; the dashboard reads
+# them on its poll tick. Without this detour there would be neither a
+# Context nor a Usage card — the data doesn't exist anywhere else.
 export LC_ALL=C
 input=$(cat)
 MODEL=$(printf '%s' "$input" | jq -r '.model.display_name // "?"')
@@ -18,14 +18,14 @@ DIR=$(printf '%s' "$input" | jq -r '.workspace.current_dir // "."')
 BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null || echo '-')
 [ -n "$BRANCH" ] || BRANCH='-'
 
-# --- Briefkasten schreiben ---------------------------------------------------
-# Fail-open: die Statuszeile darf NIE wegen des Dashboards ausfallen. Sie ist
-# das, was der Mensch sieht; das Dashboard ist Beiwerk. Deshalb `|| true`.
-# Atomar via mktemp+mv, damit das Dashboard nie eine halbe Datei liest.
-# PRO SITZUNG ablegen, nicht global: laufen zwei Cockpits nebeneinander
-# (ein tmux-Fenster je Projekt), ueberschrieben sie sonst gegenseitig ihre
-# Zahlen — dasselbe Muster, das current-session.json bereits den cwd-Abgleich
-# gekostet hat. Ohne session_id bleibt der Briefkasten leer statt falsch.
+# --- Write the mailbox --------------------------------------------------------
+# Fail-open: the status line must NEVER fail because of the dashboard. It is
+# what the human sees; the dashboard is a bonus. Hence `|| true`.
+# Atomic via mktemp+mv, so the dashboard never reads a half-written file.
+# Written PER SESSION, not globally: if two Cockpits run side by side (one
+# tmux window per project), they would otherwise overwrite each other's
+# numbers — the same pattern that already cost current-session.json its cwd
+# matching. Without a session_id the mailbox stays empty instead of wrong.
 COCKPIT_DIR="${COCKPIT_DIR:-$HOME/.claude/cockpit}"
 SESSION_ID=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 if [ -d "$COCKPIT_DIR" ] && [ -n "$SESSION_ID" ]; then
@@ -36,12 +36,12 @@ if [ -d "$COCKPIT_DIR" ] && [ -n "$SESSION_ID" ]; then
       session_id:    (.session_id // null),
       cwd:           (.workspace.current_dir // .cwd // null),
       model:         (.model.display_name // null),
-      # total_input_tokens sind die Token IM FENSTER (Cache-Lesungen und
-      # -Schreibungen eingerechnet). NICHT current_usage.input_tokens nehmen:
-      # das ist nur der letzte API-Aufruf. Real gemessen 2026-08-04 bei 41 %
-      # eines 1-Mio-Fensters: total_input_tokens ~410000, aber
-      # current_usage.input_tokens = 2. Die Karte haette "2 von 1.0M Token"
-      # angezeigt — eine Zahl, die stimmt und trotzdem das Falsche aussagt.
+      # total_input_tokens are the tokens IN THE WINDOW (cache reads and
+      # writes included). Do NOT take current_usage.input_tokens: that is
+      # only the last API call. Really measured 2026-08-04 at 41% of a
+      # 1M window: total_input_tokens ~410000, but current_usage.input_tokens
+      # = 2. The card would have shown "2 of 1.0M tokens" — a number that is
+      # correct and still says the wrong thing.
       context: {
         used_percentage: (.context_window.used_percentage // null),
         window_size:     (.context_window.context_window_size // null),
@@ -54,10 +54,11 @@ if [ -d "$COCKPIT_DIR" ] && [ -n "$SESSION_ID" ]; then
         lines_added:     (.cost.total_lines_added // null),
         lines_removed:   (.cost.total_lines_removed // null)
       },
-      # rate_limits gibt es nur fuer Claude.ai-Abos und erst nach der ersten
-      # API-Antwort der Sitzung; jedes Fenster kann einzeln fehlen. Absenz wird
-      # als null durchgereicht und in der Karte als "noch keine Angabe"
-      # ausgewiesen — nicht als 0 %, das waere eine Falschaussage.
+      # rate_limits only exists for Claude.ai subscription plans and only
+      # after the first API response of the session; either window can be
+      # individually absent. Absence is passed through as null and shown on
+      # the card as "not yet available" — not as 0%, which would be a false
+      # claim.
       rate_limits: {
         five_hour: (if .rate_limits.five_hour then {
           used_percentage: .rate_limits.five_hour.used_percentage,
@@ -72,7 +73,7 @@ if [ -d "$COCKPIT_DIR" ] && [ -n "$SESSION_ID" ]; then
   } 2>/dev/null || true
 fi
 
-# --- Ausgabe -----------------------------------------------------------------
+# --- Output --------------------------------------------------------------
 if   [ "$PCT" -ge 75 ]; then C='\033[31m'
 elif [ "$PCT" -ge 50 ]; then C='\033[33m'
 else C='\033[32m'; fi

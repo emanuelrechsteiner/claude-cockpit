@@ -18,22 +18,22 @@ const empty: CockpitState = {
 const f = (path: string, origin: FileItem['origin'], ts: number): FileItem => ({ path, origin, ts });
 
 describe('sortFiles', () => {
-  it('stellt Kandidaten voran, innerhalb der Gruppe die jüngsten zuerst', () => {
+  it('puts candidates first, newest first within each group', () => {
     const sorted = sortFiles([
-      f('/a/alt.ts', 'written', 100),
-      f('/a/neu.ts', 'written', 300),
-      f('/a/kandidat-alt.md', 'candidate', 100),
-      f('/a/kandidat-neu.md', 'candidate', 200),
+      f('/a/old.ts', 'written', 100),
+      f('/a/new.ts', 'written', 300),
+      f('/a/candidate-old.md', 'candidate', 100),
+      f('/a/candidate-new.md', 'candidate', 200),
     ]);
     expect(sorted.map((x) => x.path)).toEqual([
-      '/a/kandidat-neu.md',
-      '/a/kandidat-alt.md',
-      '/a/neu.ts',
-      '/a/alt.ts',
+      '/a/candidate-new.md',
+      '/a/candidate-old.md',
+      '/a/new.ts',
+      '/a/old.ts',
     ]);
   });
 
-  it('lässt die Eingabe unangetastet (kein In-Place-Sortieren)', () => {
+  it('leaves the input untouched (no in-place sorting)', () => {
     const input = [f('/a/b.ts', 'written', 1), f('/a/a.md', 'candidate', 2)];
     const copy = [...input];
     sortFiles(input);
@@ -41,26 +41,26 @@ describe('sortFiles', () => {
   });
 });
 
-describe('resolveOpenTarget — Dateikarte', () => {
-  // DER Fall, den die frühere Doppelung der Sortierung verdeckt hätte:
-  // die Karte zeigt sortiert, Enter wählte über denselben Index. Liefen die
-  // beiden Sortierungen auseinander, öffnete Enter eine ANDERE Datei.
-  it('wählt über denselben Index, den die Karte anzeigt', () => {
+describe('resolveOpenTarget — Files card', () => {
+  // THE case that the earlier duplication of the sort would have hidden: the
+  // card displays sorted, Enter selected by the same index. If the two sorts
+  // had drifted apart, Enter would have opened a DIFFERENT file.
+  it('selects by the same index the card displays', () => {
     const state: CockpitState = {
       ...empty,
-      files: [f('/p/zuletzt.ts', 'written', 900), f('/p/wichtig.md', 'candidate', 100)],
+      files: [f('/p/latest.ts', 'written', 900), f('/p/important.md', 'candidate', 100)],
     };
-    // Angezeigt an Position 0 ist der Kandidat, nicht die jüngste Datei.
-    expect(sortFiles(state.files)[0].path).toBe('/p/wichtig.md');
+    // Displayed at position 0 is the candidate, not the newest file.
+    expect(sortFiles(state.files)[0].path).toBe('/p/important.md');
     expect(resolveOpenTarget('files', state, 0)).toEqual({
       kind: 'file',
-      path: '/p/wichtig.md',
+      path: '/p/important.md',
       app: 'MD Viewer',
     });
-    expect(resolveOpenTarget('files', state, 1)).toEqual({ kind: 'file', path: '/p/zuletzt.ts' });
+    expect(resolveOpenTarget('files', state, 1)).toEqual({ kind: 'file', path: '/p/latest.ts' });
   });
 
-  it('öffnet Markdown mit dem MD Viewer, alles andere ohne App-Angabe', () => {
+  it('opens markdown with the MD Viewer, everything else without an app', () => {
     const md: CockpitState = { ...empty, files: [f('/p/x.md', 'written', 1)] };
     const ts: CockpitState = { ...empty, files: [f('/p/x.ts', 'written', 1)] };
     expect(resolveOpenTarget('files', md, 0)).toEqual({
@@ -71,16 +71,16 @@ describe('resolveOpenTarget — Dateikarte', () => {
     expect(resolveOpenTarget('files', ts, 0)).toEqual({ kind: 'file', path: '/p/x.ts' });
   });
 
-  it('weist relative Pfade und Leerauswahl zurück', () => {
-    const rel: CockpitState = { ...empty, files: [f('relativ.ts', 'written', 1)] };
+  it('rejects relative paths and an empty selection', () => {
+    const rel: CockpitState = { ...empty, files: [f('relative.ts', 'written', 1)] };
     expect(resolveOpenTarget('files', rel, 0)).toBeNull();
     expect(resolveOpenTarget('files', empty, 0)).toBeNull();
     expect(resolveOpenTarget('files', rel, 99)).toBeNull();
   });
 });
 
-describe('resolveOpenTarget — Linkkarte', () => {
-  it('öffnet http und https', () => {
+describe('resolveOpenTarget — Links card', () => {
+  it('opens http and https', () => {
     const s: CockpitState = {
       ...empty,
       links: [{ url: 'https://example.test/a', kind: 'source', label: 'a', ts: 1 }],
@@ -88,16 +88,16 @@ describe('resolveOpenTarget — Linkkarte', () => {
     expect(resolveOpenTarget('links', s, 0)).toEqual({ kind: 'url', url: 'https://example.test/a' });
   });
 
-  it('weist alles zurück, was kein http(s) ist — Links sind fremder Text', () => {
-    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'ftp://x.test', '/lokal/pfad']) {
+  it('rejects everything that is not http(s) — links are foreign text', () => {
+    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'ftp://x.test', '/local/path']) {
       const s: CockpitState = { ...empty, links: [{ url, kind: 'source', label: 'x', ts: 1 }] };
       expect(resolveOpenTarget('links', s, 0)).toBeNull();
     }
   });
 });
 
-describe('resolveOpenTarget — übrige Karten öffnen nichts', () => {
-  it('gibt für teamlead/subagents/workflows/plugins null zurück', () => {
+describe('resolveOpenTarget — other cards open nothing', () => {
+  it('returns null for teamlead/subagents/workflows/plugins', () => {
     for (const card of ['teamlead', 'subagents', 'workflows', 'plugins'] as const) {
       expect(resolveOpenTarget(card, empty, 0)).toBeNull();
     }
@@ -105,7 +105,7 @@ describe('resolveOpenTarget — übrige Karten öffnen nichts', () => {
 });
 
 describe('openArgs', () => {
-  it('baut die Argumentliste für open', () => {
+  it('builds the argument list for open', () => {
     expect(openArgs({ kind: 'url', url: 'https://x.test' })).toEqual(['https://x.test']);
     expect(openArgs({ kind: 'file', path: '/p/x.ts' })).toEqual(['/p/x.ts']);
     expect(openArgs({ kind: 'file', path: '/p/x.md', app: 'MD Viewer' })).toEqual([

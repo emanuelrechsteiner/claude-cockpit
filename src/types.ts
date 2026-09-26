@@ -79,13 +79,13 @@ export interface TeamLeadInfo {
 }
 
 /**
- * Kontext- und Verbrauchszahlen aus dem Statuszeilen-Briefkasten.
+ * Context and usage numbers from the status line's mailbox.
  *
- * Jedes Feld ist `null`-faehig, und das ist Absicht: `rate_limits` liefert
- * Claude Code nur fuer Claude.ai-Abos und erst nach der ersten API-Antwort der
- * Sitzung; jedes Fenster kann einzeln fehlen. Eine fehlende Angabe als 0 %
- * darzustellen waere eine Falschaussage — die Karten weisen sie als
- * "noch keine Angabe" aus.
+ * Every field is nullable, and that is intentional: Claude Code only returns
+ * `rate_limits` for Claude.ai subscription plans and only after the
+ * session's first API response; either window can be individually absent.
+ * Showing a missing value as 0% would be a false claim — the cards report
+ * it as "not yet available" instead.
  */
 export interface StatusWindow {
   usedPercentage: number | null;
@@ -93,9 +93,9 @@ export interface StatusWindow {
 }
 
 export interface StatusInfo {
-  /** Unix-Sekunden, wann die Statuszeile diesen Stand abgelegt hat. */
+  /** Unix seconds when the status line wrote this reading. */
   ts: number;
-  /** true, wenn der Stand aelter ist als die Toleranz (siehe readStatus). */
+  /** true when the reading is older than the tolerance (see readStatus). */
   stale: boolean;
   model: string | null;
   contextPct: number | null;
@@ -133,7 +133,7 @@ export interface LiveAgents {
 
 export interface CockpitState {
   teamLead: TeamLeadInfo;
-  /** null, solange die Statuszeile noch nichts abgelegt hat. */
+  /** null while the status line has not written anything yet. */
   status: StatusInfo | null;
   subagents: SubagentInfo[];
   /** null while subagent-statusline.sh has never written for this session. */

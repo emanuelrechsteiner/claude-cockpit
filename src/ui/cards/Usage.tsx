@@ -4,19 +4,19 @@ import type { StatusInfo, StatusWindow } from '../../types.js';
 import { pctColor, bar } from './Context.js';
 
 /**
- * Restzeit bis zum Zuruecksetzen, grob wie bei Claude Desktop: "noch 2 h 15 min".
- * Liegt der Zeitpunkt in der Vergangenheit, ist das Fenster bereits zurueckgesetzt
- * und die Statuszeile hat es nur noch nicht nachgetragen — dann sagen wir das.
+ * Time left until reset, roughly like Claude Desktop: "2h 15min left".
+ * If the timestamp is in the past, the window has already reset and the
+ * status line just hasn't caught up yet — so that's what we say.
  */
 export function untilReset(resetsAt: number | null, nowSeconds: number): string {
   if (resetsAt === null) return '';
   const left = resetsAt - nowSeconds;
-  if (left <= 0) return 'zurückgesetzt';
+  if (left <= 0) return 'reset';
   const h = Math.floor(left / 3600);
   const m = Math.floor((left % 3600) / 60);
-  if (h >= 24) return `noch ${Math.floor(h / 24)} d ${h % 24} h`;
-  if (h > 0) return `noch ${h} h ${m} min`;
-  return `noch ${m} min`;
+  if (h >= 24) return `${Math.floor(h / 24)} d ${h % 24} h left`;
+  if (h > 0) return `${h} h ${m} min left`;
+  return `${m} min left`;
 }
 
 function Window(props: { label: string; data: StatusWindow | null; now: number }) {
@@ -24,7 +24,7 @@ function Window(props: { label: string; data: StatusWindow | null; now: number }
   if (!w || w.usedPercentage === null) {
     return (
       <Text dimColor>
-        {props.label}: noch keine Angabe
+        {props.label}: not yet available
       </Text>
     );
   }
@@ -41,19 +41,20 @@ function Window(props: { label: string; data: StatusWindow | null; now: number }
 export function Usage(props: { data: StatusInfo | null; now?: number }) {
   const s = props.data;
   const now = props.now ?? Math.floor(Date.now() / 1000);
-  if (!s) return <Text dimColor>wartet auf die Statuszeile…</Text>;
+  if (!s) return <Text dimColor>waiting for the status line…</Text>;
 
-  // Beide Fenster fehlen: das ist der Normalfall fuer API-Nutzer und fuer die
-  // Zeit vor der ersten API-Antwort. Ehrlich benennen statt 0 % zeigen.
+  // Both windows missing: that's the normal case for API users and for the
+  // time before the session's first API response. Name it honestly instead
+  // of showing 0%.
   if (!s.fiveHour && !s.sevenDay) {
-    return <Text dimColor>keine Limit-Angaben (nur für Claude.ai-Abos, ab der ersten Antwort)</Text>;
+    return <Text dimColor>no limit data (Claude.ai plans only, from the first reply)</Text>;
   }
 
   return (
     <>
-      <Window label="5 Std" data={s.fiveHour} now={now} />
-      <Window label="7 Tage" data={s.sevenDay} now={now} />
-      {s.stale && <Text color="yellow">Stand veraltet — Sitzung arbeitet gerade nicht</Text>}
+      <Window label="5h" data={s.fiveHour} now={now} />
+      <Window label="7d" data={s.sevenDay} now={now} />
+      {s.stale && <Text color="yellow">stale — session is idle</Text>}
     </>
   );
 }

@@ -24,7 +24,7 @@ export function Plugins(props: {
   cursor: number;
   actionCursor: number | null;
 }) {
-  if (props.data.length === 0) return <Text dimColor>keine Plugins gefunden</Text>;
+  if (props.data.length === 0) return <Text dimColor>no plugins found</Text>;
   const visible = props.focused ? props.data : props.data.slice(0, 6);
   return (
     <>
@@ -52,7 +52,7 @@ export function Plugins(props: {
           </React.Fragment>
         );
       })}
-      {!props.focused && props.data.length > 6 && <Text dimColor>… +{props.data.length - 6} weitere</Text>}
+      {!props.focused && props.data.length > 6 && <Text dimColor>… +{props.data.length - 6} more</Text>}
     </>
   );
 }

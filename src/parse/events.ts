@@ -16,7 +16,7 @@ export function emptyEventState(): EventState {
     subagents: [],
     workflows: [
       { name: 'Tasks', source: 'tasks', done: 0, total: 0, tasks: [] },
-      { name: 'Welle', source: 'wave', done: 0, total: 0, tasks: [] },
+      { name: 'Wave', source: 'wave', done: 0, total: 0, tasks: [] },
     ],
     anonymousTasks: { done: 0, total: 0 },
   };
@@ -134,7 +134,7 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
           // An update can arrive before its create in the same batch; keep its status.
           if (subject) known.subject = subject;
         } else {
-          tasks.set(id, { id, subject: subject ?? `Aufgabe ${id}`, status: 'pending' });
+          tasks.set(id, { id, subject: subject ?? `Task ${id}`, status: 'pending' });
         }
         break;
       }
@@ -150,7 +150,7 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
           tasks.delete(id);
           break;
         }
-        const task = tasks.get(id) ?? { id, subject: `Aufgabe ${id}`, status: 'pending' as TaskStatus };
+        const task = tasks.get(id) ?? { id, subject: `Task ${id}`, status: 'pending' as TaskStatus };
         if (isStatus(status)) task.status = status;
         const subject = str(ti['subject']);
         if (subject) task.subject = subject;
@@ -179,10 +179,10 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
 }
 
 /**
- * The Welle workflow: one row per subagent, deterministic (SubagentStart/Stop
+ * The Wave workflow: one row per subagent, deterministic (SubagentStart/Stop
  * fire on every hook run, unlike the task list, which only exists when the
  * model chooses to keep one). Reads the SAME `subagents` state Card 3
- * (Subagenten) is built from — not a second, independent count of the same
+ * (Subagents) is built from — not a second, independent count of the same
  * events (see rules/testing-quality.md "Verify Via the Same Code Path").
  */
 function buildWaveWorkflow(subagents: SubagentInfo[]): WorkflowInfo {
@@ -196,7 +196,7 @@ function buildWaveWorkflow(subagents: SubagentInfo[]): WorkflowInfo {
     status: s.status === 'running' ? 'in_progress' : 'completed',
   }));
   return {
-    name: 'Welle',
+    name: 'Wave',
     source: 'wave',
     done: tasks.filter((t) => t.status === 'completed').length,
     total: tasks.length,

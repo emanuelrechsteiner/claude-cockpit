@@ -2,10 +2,10 @@ export type KeyAction =
   | { type: 'focus'; card: number }
   | { type: 'up' | 'down' | 'left' | 'right' | 'enter' | 'escape' | 'quit' }
   /**
-   * Ein gewoehnliches Schriftzeichen. Seit 2026-08-04 liegt der tmux-Fokus
-   * waehrend der Kartenbedienung auf dem Dashboard — wer danach weitertippt,
-   * meinte Claude. Die App gibt den Fokus zurueck und reicht das Zeichen
-   * hinueber, statt es zu verschlucken.
+   * An ordinary printable character. Since 2026-08-04, tmux focus sits on the
+   * dashboard while operating a card — whoever keeps typing after that meant
+   * Claude. The app returns focus and forwards the character instead of
+   * swallowing it.
    */
   | { type: 'text'; text: string };
 
@@ -26,9 +26,9 @@ export function parseKey(chunk: string): KeyAction | null {
 }
 
 /**
- * Druckbar = ein einzelnes Zeichen ab Leerzeichen, ohne Loeschtaste.
- * Steuerzeichen (Tab, Strg-Kombinationen) werden bewusst NICHT durchgereicht:
- * sie koennten links etwas ausloesen, das der Nutzer nicht gemeint hat.
+ * Printable = a single character from space upward, excluding delete.
+ * Control characters (tab, ctrl combinations) are deliberately NOT forwarded:
+ * they could trigger something on the left the user didn't intend.
  */
 function isPrintable(chunk: string): boolean {
   if ([...chunk].length !== 1) return false;
@@ -37,10 +37,10 @@ function isPrintable(chunk: string): boolean {
 }
 
 /**
- * Setzt Sequenzen wieder zusammen, die tmux/send-keys als Einzelzeichen
- * durchreicht. Beginnt ein Chunk mit ESC, wird bis 50 ms gepuffert; ergibt
- * der Puffer eine bekannte Sequenz, wird sie emittiert — sonst nach Timeout
- * ein einzelnes Escape (bzw. verworfen).
+ * Reassembles sequences that tmux/send-keys forwards as individual
+ * characters. If a chunk starts with ESC, it is buffered for up to 50 ms; if
+ * the buffer forms a known sequence, it is emitted — otherwise, after a
+ * timeout, a plain Escape (or it is discarded).
  */
 export class KeySequencer {
   private buf = '';

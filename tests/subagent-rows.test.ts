@@ -73,7 +73,7 @@ describe('readAgentDefs', () => {
   });
 
   it('returns an empty map for a missing directory', () => {
-    expect(readAgentDefs('/gibt/es/nicht').size).toBe(0);
+    expect(readAgentDefs('/does/not/exist').size).toBe(0);
   });
 });
 
@@ -91,7 +91,7 @@ describe('subagentRows', () => {
       sessionModel: 'Opus 5.5 (1M context)',
       now,
     });
-    expect(rows[0]).toMatchObject({ title: 'ui-agent', meta: 'Sonnet · max', activity: 'idle · fertig vor 4 min', icon: '✓' });
+    expect(rows[0]).toMatchObject({ title: 'ui-agent', meta: 'Sonnet · max', activity: 'idle · done 4 min ago', icon: '✓' });
   });
 
   it('falls back to the session model when neither call nor definition names one', () => {

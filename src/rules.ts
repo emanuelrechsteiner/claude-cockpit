@@ -14,7 +14,7 @@ export interface Rules {
 
 export function loadRules(path: string): Rules {
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Rules;
-  if (!Array.isArray(raw.links)) throw new Error(`rules.json invalid: links fehlt (${path})`);
+  if (!Array.isArray(raw.links)) throw new Error(`rules.json invalid: links missing (${path})`);
   return raw;
 }
 

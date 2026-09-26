@@ -3,7 +3,7 @@ import { Text } from 'ink';
 import type { TaskStatus, WorkflowInfo } from '../../types.js';
 import { taskBar, workflowBlocks } from './workflow-view.js';
 
-// Up to two blocks (Tasks + Welle) can be visible at once now; 4 keeps a
+// Up to two blocks (Tasks + Wave) can be visible at once now; 4 keeps a
 // two-block card within roughly the same height the single-block card used
 // to take at its old MAX_TASKS of 6 (1 + 6 = 7 rows -> 2 + 2*4 = 10 rows,
 // still short enough for the sidebar, per the caller's own budget call).
@@ -23,14 +23,14 @@ function subject(s: string): string {
 }
 
 /**
- * Card 4: one block per non-empty workflow (Tasks, Welle), each with its own
+ * Card 4: one block per non-empty workflow (Tasks, Wave), each with its own
  * overall bar followed by one row per task. `workflowBlocks` (workflow-view.ts)
  * does the row-layout math — including the continuous cursor numbering across
  * blocks, so cursor 0 never highlights two bars at once when both are shown.
  */
 export function Workflows(props: { data: WorkflowInfo[]; focused: boolean; cursor: number }) {
   const blocks = workflowBlocks(props.data, MAX_TASKS);
-  if (blocks.length === 0) return <Text dimColor>keine aktiven Workflows</Text>;
+  if (blocks.length === 0) return <Text dimColor>no active workflows</Text>;
   const now = Date.now();
   return (
     <>
@@ -45,7 +45,7 @@ export function Workflows(props: { data: WorkflowInfo[]; focused: boolean; curso
               <Text color={COLOR[t.status]}>{taskBar(t.status, now)}</Text>
             </Text>
           ))}
-          {b.hidden > 0 ? <Text dimColor>… +{b.hidden} weitere</Text> : null}
+          {b.hidden > 0 ? <Text dimColor>… +{b.hidden} more</Text> : null}
         </React.Fragment>
       ))}
     </>

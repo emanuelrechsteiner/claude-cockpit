@@ -3,43 +3,44 @@ import { promisify } from 'node:util';
 import { countEchoes, hasReply } from '../models.js';
 
 /**
- * Gibt den tmux-Fokus ans linke Pane (Claude) zurueck — und reicht dabei auf
- * Wunsch ein versehentlich hier gelandetes Zeichen mit hinueber.
+ * Returns tmux focus to the left pane (Claude) — and, on request, forwards a
+ * character that landed here by accident along with it.
  *
- * Hintergrund: Seit 2026-08-04 setzt ⌘1-6 den tmux-Fokus mit auf das
- * Dashboard, damit Pfeile und Enter ohne weitere Tastenkombinationen wirken
- * (GUI-Verhalten: Panel anwaehlen, darin arbeiten, wieder raus). Der Preis
- * waere sonst, dass ein Nutzer nach dem Blick auf die Karte weitertippt und
- * sein Text im Dashboard verschwindet. Deshalb: das erste normale Zeichen
- * schickt den Fokus zurueck UND wird nach links durchgereicht — es geht
- * nichts verloren, und ab dem zweiten Zeichen tippt man wieder normal.
+ * Background: since 2026-08-04, ⌘1-6 moves tmux focus onto the dashboard
+ * along with the card selection, so arrows and Enter work without any
+ * further key combination (GUI behavior: select a panel, work in it, leave
+ * again). The cost would otherwise be that a user keeps typing after looking
+ * at the card and their text disappears into the dashboard. So: the first
+ * ordinary character sends focus back AND is forwarded left — nothing is
+ * lost, and from the second character on you type normally again.
  *
- * Fail-open in jeder Hinsicht: ausserhalb von tmux passiert nichts, und ein
- * Fehler im tmux-Aufruf darf das Dashboard nie stoeren.
+ * Fail-open in every respect: outside tmux nothing happens, and a failure in
+ * the tmux call must never disturb the dashboard.
  */
 
-/** Nur innerhalb einer tmux-Sitzung gibt es ueberhaupt Panes. */
+/** Panes only exist at all inside a tmux session. */
 function inTmux(): boolean {
   return typeof process.env['TMUX'] === 'string' && process.env['TMUX'] !== '';
 }
 
 /**
- * `-L` waehlt richtungsbezogen das Pane LINKS vom aktiven. Der Launcher legt
- * das Dashboard immer rechts an (`split-window -h`), damit trifft das.
+ * `-L` selects the pane to the LEFT of the active one, direction-relative.
+ * The launcher always places the dashboard on the right (`split-window -h`),
+ * so this matches.
  */
 export function returnFocusLeft(): void {
   if (!inTmux()) return;
   execFile('tmux', ['select-pane', '-L'], () => {
-    /* fail-open: ein fehlgeschlagener Fokuswechsel darf nichts blockieren */
+    /* fail-open: a failed focus switch must never block anything */
   });
 }
 
 /**
- * Schickt ein Zeichen ans linke Pane. `-l` = literal, damit tmux es nicht als
- * Tastennamen deutet ("q" bliebe sonst q, aber "Enter" waere ein Sonderfall);
- * `--` beendet die Optionsliste, damit ein Zeichen wie "-" nicht als Flag
- * gelesen wird. execFile mit Argumentliste, also KEINE Shell — der Text kommt
- * aus der Tastatur und wird nirgends interpretiert.
+ * Sends a character to the left pane. `-l` = literal, so tmux doesn't
+ * interpret it as a key name ("q" would otherwise stay q, but "Enter" would
+ * be a special case); `--` ends the option list so a character like "-"
+ * isn't read as a flag. execFile with an argument list, so NO shell — the
+ * text comes from the keyboard and is never interpreted anywhere.
  */
 export function forwardToLeft(text: string): void {
   if (!inTmux() || text === '') return;
@@ -51,25 +52,25 @@ export function forwardToLeft(text: string): void {
 const tmuxRun = promisify(execFile);
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Sichtbarer Inhalt links samt 200 Zeilen Verlauf; -J fuegt umgebrochene Zeilen zusammen. */
+/** Visible content on the left plus 200 lines of history; -J joins wrapped lines. */
 async function captureLeft(): Promise<string> {
   const { stdout } = await tmuxRun('tmux', ['capture-pane', '-p', '-J', '-t', '{left}', '-S', '-200']);
   return stdout;
 }
 
 /**
- * Tippt ganze Befehlszeilen links ein und schickt jede mit Enter ab (Karte
- * Modell & Effort). Anders als die Zeichen-Durchreiche oben NICHT fail-open:
- * wer "Opus · high" gewaehlt hat, muss erfahren, wenn es nicht ankam — der
- * Aufrufer zeigt den Fehler auf der Karte an.
+ * Types whole command lines into the left pane and submits each with Enter
+ * (Model & Effort card). Unlike the character forwarding above, this is NOT
+ * fail-open: someone who chose "Opus · high" needs to know if it didn't
+ * arrive — the caller shows the error on the card.
  *
- * Vor jeder weiteren Zeile wird gewartet, bis Claude die vorige sichtbar
- * beantwortet hat (siehe hasReply in models.ts — dort steht, warum eine feste
- * Pause nicht reichte). Bleibt die Antwort aus, etwa weil Claude gerade
- * mitten in einer Antwort steckt, wird der Rest NICHT blind hinterhergeschickt.
+ * Before each further line, it waits until Claude has visibly answered the
+ * previous one (see hasReply in models.ts — that's where it explains why a
+ * fixed pause wasn't enough). If the reply doesn't come, e.g. because Claude
+ * is in the middle of answering something else, the rest is NOT sent blind.
  */
 export async function submitToLeft(lines: string[], replyTimeoutMs = 6000): Promise<void> {
-  if (!inTmux()) throw new Error('kein tmux — linkes Pane nicht erreichbar');
+  if (!inTmux()) throw new Error('no tmux — left pane unreachable');
   for (const [i, line] of lines.entries()) {
     const echoesBefore = countEchoes(await captureLeft(), line);
     await tmuxRun('tmux', ['send-keys', '-l', '-t', '{left}', '--', line]);
@@ -77,7 +78,7 @@ export async function submitToLeft(lines: string[], replyTimeoutMs = 6000): Prom
     if (i === lines.length - 1) break;
     const deadline = Date.now() + replyTimeoutMs;
     while (!hasReply(await captureLeft(), line, echoesBefore)) {
-      if (Date.now() > deadline) throw new Error(`${line} unbestätigt — Rest nicht gesendet`);
+      if (Date.now() > deadline) throw new Error(`${line} unconfirmed — rest not sent`);
       await pause(150);
     }
     await pause(250);

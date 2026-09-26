@@ -2,14 +2,14 @@ import React from 'react';
 import { Text } from 'ink';
 import type { StatusInfo } from '../../types.js';
 
-/** Ampel wie in der Statuszeile: gruen < 50 %, gelb ab 50 %, rot ab 75 %. */
+/** Traffic-light coloring like the status line: green < 50%, yellow from 50%, red from 75%. */
 export function pctColor(pct: number): string {
   if (pct >= 75) return 'red';
   if (pct >= 50) return 'yellow';
   return 'green';
 }
 
-/** Balken aus Blockzeichen — 20 Zellen, damit er in jede Pane-Breite passt. */
+/** Bar built from block characters — 20 cells, so it fits any pane width. */
 export function bar(pct: number, width = 20): string {
   const clamped = Math.max(0, Math.min(100, pct));
   const full = Math.round((clamped / 100) * width);
@@ -24,8 +24,8 @@ function compact(n: number): string {
 
 export function Context(props: { data: StatusInfo | null }) {
   const s = props.data;
-  if (!s) return <Text dimColor>wartet auf die Statuszeile…</Text>;
-  if (s.contextPct === null) return <Text dimColor>keine Kontextangabe</Text>;
+  if (!s) return <Text dimColor>waiting for the status line…</Text>;
+  if (s.contextPct === null) return <Text dimColor>no context data</Text>;
 
   const pct = Math.round(s.contextPct);
   return (
@@ -35,18 +35,18 @@ export function Context(props: { data: StatusInfo | null }) {
       </Text>
       {s.windowSize !== null && s.inputTokens !== null && (
         <Text dimColor>
-          {compact(s.inputTokens)} von {compact(s.windowSize)} Token
+          {compact(s.inputTokens)} of {compact(s.windowSize)} tokens
         </Text>
       )}
       {s.costUsd !== null && (
         <Text dimColor>
-          ${s.costUsd.toFixed(2)} diese Sitzung
+          ${s.costUsd.toFixed(2)} this session
           {s.linesAdded !== null && s.linesRemoved !== null
-            ? ` · +${s.linesAdded}/-${s.linesRemoved} Zeilen`
+            ? ` · +${s.linesAdded}/-${s.linesRemoved} lines`
             : ''}
         </Text>
       )}
-      {s.stale && <Text color="yellow">Stand veraltet — Sitzung arbeitet gerade nicht</Text>}
+      {s.stale && <Text color="yellow">stale — session is idle</Text>}
     </>
   );
 }

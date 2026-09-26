@@ -3,16 +3,16 @@ node_modules/
 /errors.log
 /current-session.json
 /dashboard.log
-# Briefkasten der Statuszeile (eine Datei je Sitzung) + dessen atomare
-# Zwischenablage. Reiner Laufzeitzustand — versioniert wuerde er jede
-# Uebergabe blockieren, so wie es plugins/*.json im Konfig-Repo getan haben.
+# Status line's mailbox (one file per session) plus its atomic staging file.
+# Pure runtime state — versioning it would block every handoff, the way
+# plugins/*.json used to in the config repo.
 /status-*.json
 /.status.*
-# Briefkasten der Subagentenzeile (statusline/subagent-statusline.sh, seit
-# 2026-09-26) und die Sitzungszuordnung des SessionStart-Hooks — beides
-# Laufzeitzustand derselben Bauart.
+# Subagent status line's mailbox (statusline/subagent-statusline.sh, since
+# 2026-09-26) and the SessionStart hook's session mapping — both runtime
+# state of the same kind.
 /subagents-*.json
 /.subagents.*
 /session-*.json
-# Finder-Metadaten von macOS — blockierte am 2026-09-23 die Uebergabe
+# macOS Finder metadata — blocked the handoff on 2026-09-23
 .DS_Store

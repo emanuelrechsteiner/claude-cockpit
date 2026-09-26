@@ -13,13 +13,13 @@ usage) plus seven numbered, operable cards (Model & Effort, Team Lead,
 Subagents, Workflows, Links, Files, Plugins) fed by Claude Code's own hooks,
 its session transcript, and `claude agents --json`.
 
-![Cockpit overview](docs/assets/cockpit-uebersicht.png)
+![Claude Code and the Cockpit side by side in Ghostty](docs/assets/cockpit-overview.png)
 *Demo data — sample session shown for illustration.*
 
-![Cockpit two-pane layout](docs/assets/cockpit-spalte.png)
+![The Cockpit column: two info cards and seven numbered cards](docs/assets/cockpit-column.png)
 *Demo data — sample session shown for illustration.*
 
-![Cockpit card focused](docs/assets/cockpit-fokus.png)
+![A card focused: border and heading in the focus color, keyboard shortcuts in the footer](docs/assets/cockpit-focus.png)
 *Demo data — sample session shown for illustration.*
 
 ## What it is

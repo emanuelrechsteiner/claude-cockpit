@@ -1,14 +1,14 @@
 import type { CockpitState, CardId, FileItem } from '../types.js';
 
 /**
- * Anzeigereihenfolge der Dateikarte: Kandidaten (★) zuerst, innerhalb einer
- * Gruppe die juengsten oben.
+ * Display order of the Files card: candidates (★) first, newest on top
+ * within each group.
  *
- * EINE Quelle fuer zwei Verbraucher — die Karte zeichnet danach, und die
- * Enter-Taste waehlt danach aus. Bis 2026-08-04 stand dieselbe Sortierung
- * zweimal im Code (Files.tsx und app.tsx). Waeren die auseinandergelaufen,
- * haette Enter eine ANDERE Datei geoeffnet als die markierte — ein Fehler,
- * der sich erst beim Klick zeigt und nach einem Zufall aussieht.
+ * ONE source for two consumers — the card renders by it, and the Enter key
+ * selects by it. Until 2026-08-04, the same sort lived twice in the code
+ * (Files.tsx and app.tsx). Had they drifted apart, Enter would have opened a
+ * DIFFERENT file than the one highlighted — a bug that only shows up on
+ * click and looks like a fluke.
  */
 export function sortFiles(files: FileItem[]): FileItem[] {
   return [...files].sort((a, b) =>
@@ -16,18 +16,18 @@ export function sortFiles(files: FileItem[]): FileItem[] {
   );
 }
 
-/** Was die Enter-Taste oeffnen soll — oder null, wenn nichts zu oeffnen ist. */
+/** What the Enter key should open — or null when there is nothing to open. */
 export type OpenTarget =
   | { kind: 'url'; url: string }
   | { kind: 'file'; path: string; app?: string };
 
 /**
- * Entscheidet REIN rechnend, was Enter auf einer Karte oeffnet. Ohne
- * Seiteneffekt, damit genau diese Auswahl pruefbar ist; das eigentliche
- * Oeffnen (execFile) bleibt in der App.
+ * Decides PURELY by computation what Enter opens on a card. No side effect,
+ * so exactly this choice is testable; the actual opening (execFile) stays in
+ * the app.
  *
- * Die Plugin-Karte ist bewusst NICHT hier: sie oeffnet nichts, sondern
- * schaltet eine Aktionsleiste und aendert Zustand.
+ * The Plugins card is deliberately NOT here: it doesn't open anything, it
+ * toggles an action bar and changes state.
  */
 export function resolveOpenTarget(
   card: CardId,
@@ -36,8 +36,8 @@ export function resolveOpenTarget(
 ): OpenTarget | null {
   if (card === 'links') {
     const l = state.links[cursor];
-    // Nur echte http(s)-Ziele. Ein Link aus fremdem Text ist untrusted
-    // content — file:// oder gar javascript: gehoeren nicht an `open`.
+    // Only real http(s) targets. A link from foreign text is untrusted
+    // content — file:// or even javascript: has no business going to `open`.
     return l && /^https?:\/\//.test(l.url) ? { kind: 'url', url: l.url } : null;
   }
   if (card === 'files') {
@@ -50,7 +50,7 @@ export function resolveOpenTarget(
   return null;
 }
 
-/** Argumentliste fuer `open`, passend zum Ziel. */
+/** Argument list for `open`, matching the target. */
 export function openArgs(t: OpenTarget): string[] {
   if (t.kind === 'url') return [t.url];
   return t.app !== undefined ? ['-a', t.app, t.path] : [t.path];

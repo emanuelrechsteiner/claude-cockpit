@@ -1,12 +1,12 @@
 /**
- * Schnellwahl fuer Modell und Effort (Karte 1, seit 2026-09-24).
+ * Quick-switch for model and effort (card 1, since 2026-09-24).
  *
- * Die Karte stellt nichts selbst um: sie tippt `/model <id>` und
- * `/effort <stufe>` in das linke Pane, als haette der Nutzer es getan. Damit
- * gilt genau das Verhalten von Claude Code — inklusive seiner Fehlermeldung,
- * falls ein Modell eine Stufe nicht kennt. Die Liste ist bewusst eine
- * Konstante: sie aendert sich mit jeder Modellgeneration, und dann gehoert
- * die Aenderung in die Bauakte (git), nicht in eine Laufzeitdatei.
+ * The card never switches anything itself: it types `/model <id>` and
+ * `/effort <level>` into the left pane, as if the user had done it. That way
+ * exactly Claude Code's own behavior applies — including its error message
+ * if a model doesn't know a given level. The list is deliberately a
+ * constant: it changes with every model generation, and that change then
+ * belongs in the build record (git), not a runtime file.
  */
 
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -14,9 +14,9 @@ export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
 export interface ModelChoice {
   label: string;
-  /** Genau das Argument fuer `/model`. */
+  /** The exact argument for `/model`. */
   id: string;
-  /** false: Claude Code meldet fuer dieses Modell "Effort not supported". */
+  /** false: Claude Code reports "Effort not supported" for this model. */
   effort: boolean;
 }
 
@@ -27,30 +27,30 @@ export const MODEL_CHOICES: readonly ModelChoice[] = [
   { label: 'Haiku 4.5', id: 'claude-haiku-4-5', effort: false },
 ];
 
-/** Startstufe der Effort-Leiste — die Vorgabe, die auch Claude Code setzt. */
+/** Starting level of the effort bar — the same default Claude Code itself uses. */
 export const DEFAULT_EFFORT_INDEX = EFFORT_LEVELS.indexOf('medium');
 
-/** Pfeil-runter zaehlt unbegrenzt hoch; die Auswahl bleibt trotzdem in der Liste. */
+/** Arrow-down counts up without limit; the selection still stays within the list. */
 export function clampIndex(i: number, length: number): number {
   return Math.max(0, Math.min(i, length - 1));
 }
 
-/** Wie oft Claudes Eingabezeile genau diesen Befehl zeigt. */
+/** How many times Claude's input line shows exactly this command. */
 export function countEchoes(screen: string, line: string): number {
   return screen.split('\n').filter((l) => l.trimEnd() === `❯ ${line}`).length;
 }
 
 /**
- * Hat Claude auf den zuletzt abgeschickten `line` geantwortet? Erkennbar an
- * einer Ergebniszeile (`⎿`) NACH dem neuesten Echo — und das Echo muss neu
- * sein (mehr als `echoesBefore`), sonst zaehlte eine alte Antwort auf
- * denselben Befehl weiter oben im Verlauf.
+ * Did Claude answer the most recently submitted `line`? Recognized by a
+ * result line (`⎿`) AFTER the newest echo — and the echo must be new (more
+ * than `echoesBefore`), otherwise an old reply to the same command further
+ * up in the history would count.
  *
- * Warum das noetig ist (gemessen 2026-09-24 an einem echten Claude Code
- * 2.1.281): beim ERSTEN Modellwechsel einer frischen Sitzung ging ein
- * `/effort`, das 700 ms nach `/model` getippt wurde, spurlos verloren — tmux
- * hatte beide Zeilen abgeliefert. Eine laengere feste Pause waere geraten;
- * auf die sichtbare Antwort zu warten ist es nicht.
+ * Why this is needed (measured 2026-09-24 against a real Claude Code
+ * 2.1.281): on the FIRST model switch of a fresh session, an `/effort` typed
+ * 700 ms after `/model` vanished without a trace — tmux had delivered both
+ * lines. A longer fixed pause would be a guess; waiting for the visible
+ * reply is not.
  */
 export function hasReply(screen: string, line: string, echoesBefore: number): boolean {
   const rows = screen.split('\n');
@@ -60,8 +60,8 @@ export function hasReply(screen: string, line: string, echoesBefore: number): bo
 }
 
 /**
- * Die Zeilen, die ins linke Pane getippt werden. Ohne Effort-Unterstuetzung
- * nur der Modellwechsel — ein `/effort` danach waere eine sichere Fehlermeldung.
+ * The lines typed into the left pane. Without effort support, only the model
+ * switch — an `/effort` afterward would be a guaranteed error message.
  */
 export function switchCommands(model: ModelChoice, effort: EffortLevel | null): string[] {
   const lines = [`/model ${model.id}`];

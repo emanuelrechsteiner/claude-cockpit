@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Cockpit-Messfühler: hängt Hook-Ereignisse an events-<session_id>.jsonl an.
-# Fail-open gegenüber Claude Code (exit 0 immer); Fehler landen in errors.log.
+# Cockpit sensor: appends hook events to events-<session_id>.jsonl.
+# Fail-open toward Claude Code (always exit 0); errors go to errors.log.
 set -u
 DIR="${COCKPIT_DIR:-$HOME/.claude/cockpit}"
 EVENT="${1:-unknown}"
@@ -13,16 +13,16 @@ INPUT="$(cat 2>/dev/null || true)"
   [ -n "$DATA" ] || DATA='null'
   printf '{"ts":%s,"event":"%s","data":%s}\n' "$TS" "$EVENT" "$DATA" >> "$DIR/events-$SID.jsonl"
   if [ "$EVENT" = "SessionStart" ] && [ "$DATA" != "null" ]; then
-    # PRO SITZUNG (2026-08-04): current-session.json ist global — wer zuletzt
-    # startet, ueberschreibt sie. Startet irgendwo eine zweite Claude-Sitzung,
-    # verliert das Dashboard seine eigene Kennung und findet weder Briefkasten
-    # noch Transcript. Real beobachtet: eine Sitzung im Heimatverzeichnis
-    # ueberschrieb die des Projekts; die Kontext- und Verbrauchskarte standen
-    # danach dauerhaft auf "wartet auf die Statuszeile".
-    # Dieselbe Bauart wie events-<sid>.jsonl und status-<sid>.json.
+    # PER SESSION (2026-08-04): current-session.json is global — whoever
+    # starts last overwrites it. If a second Claude session starts anywhere,
+    # the dashboard loses its own identifier and finds neither its mailbox
+    # nor the transcript. Really observed: a session in the home directory
+    # overwrote the project's; the Context and Usage cards then permanently
+    # read "waiting for the status line".
+    # Same pattern as events-<sid>.jsonl and status-<sid>.json.
     printf '%s' "$DATA" | jq -c '{session_id, transcript_path, cwd}' > "$DIR/session-$SID.json" 2>/dev/null || true
-    # current-session.json bleibt zusaetzlich bestehen: Rueckfalllinie fuer
-    # Aufrufe ohne COCKPIT_TARGET_CWD (dort gibt es keinen Ordner zum Abgleich).
+    # current-session.json is also kept around: fallback for calls without
+    # COCKPIT_TARGET_CWD (there is no folder to match against there).
     printf '%s' "$DATA" | jq -c '{session_id, transcript_path, cwd}' > "$DIR/current-session.json" 2>/dev/null || true
   fi
 } 2>> "$DIR/errors.log" || true

@@ -27,11 +27,11 @@ const FULL = JSON.stringify({
     context_window_size: 1_000_000,
     total_input_tokens: 314_000,
     total_output_tokens: 12_000,
-    // Absichtlich WIDERSPRECHENDE Werte: current_usage zaehlt nur den letzten
-    // API-Aufruf, total_* die Token im Fenster. Real gemessen 2026-08-04 bei
-    // 41 % eines 1-Mio-Fensters: total_input_tokens ~410000, current_usage
-    // .input_tokens = 2. Wer hier das falsche Feld nimmt, zeigt eine Zahl an,
-    // die stimmt und trotzdem das Falsche aussagt — deshalb dieser Testfall.
+    // Deliberately CONTRADICTORY values: current_usage only counts the last
+    // API call, total_* the tokens in the window. Really measured 2026-08-04
+    // at 41% of a 1M window: total_input_tokens ~410000, current_usage
+    // .input_tokens = 2. Taking the wrong field here shows a number that is
+    // correct and still says the wrong thing — hence this test case.
     current_usage: { input_tokens: 2, output_tokens: 178 },
   },
   cost: { total_cost_usd: 20.69, total_duration_ms: 900_000, total_lines_added: 578, total_lines_removed: 303 },
@@ -42,8 +42,8 @@ const FULL = JSON.stringify({
   },
 });
 
-describe('statusline.sh als Briefkasten', () => {
-  it('legt die Zahlen pro Sitzung ab und zeigt weiterhin die Statuszeile', () => {
+describe('statusline.sh as a mailbox', () => {
+  it('drops the numbers per session and still shows the status line', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     const out = run(FULL, dir);
     expect(out).toContain('Opus 5');
@@ -52,7 +52,7 @@ describe('statusline.sh als Briefkasten', () => {
     const s = readStatus(join(dir, 'status-s1.json'), 1_785_829_600);
     expect(s.contextPct).toBe(31.4);
     expect(s.windowSize).toBe(1_000_000);
-    // total_input_tokens (Fenster), NICHT current_usage.input_tokens (2)
+    // total_input_tokens (window), NOT current_usage.input_tokens (2)
     expect(s.inputTokens).toBe(314_000);
     expect(s.outputTokens).toBe(12_000);
     expect(s.costUsd).toBe(20.69);
@@ -62,7 +62,7 @@ describe('statusline.sh als Briefkasten', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('schreibt PRO SITZUNG — zwei Sitzungen überschreiben sich nicht', () => {
+  it('writes PER SESSION — two sessions do not overwrite each other', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     run(FULL, dir);
     run(FULL.replace('"s1"', '"s2"').replace('31.4', '77'), dir);
@@ -71,7 +71,7 @@ describe('statusline.sh als Briefkasten', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('meldet fehlende rate_limits als null, NICHT als 0 Prozent', () => {
+  it('reports missing rate_limits as null, NOT as 0 percent', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     run(JSON.stringify({ session_id: 's3', context_window: { used_percentage: 5 } }), dir);
     const s = readStatus(join(dir, 'status-s3.json'));
@@ -81,21 +81,21 @@ describe('statusline.sh als Briefkasten', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('fällt nie aus: fehlendes Zielverzeichnis, fehlende session_id, Müll-Eingabe', () => {
+  it('never fails: missing target directory, missing session_id, garbage input', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
-    expect(() => run(FULL, '/nonexistent/pfad')).not.toThrow();
-    // ohne session_id bleibt der Briefkasten LEER statt eine globale Datei zu schreiben
+    expect(() => run(FULL, '/nonexistent/path')).not.toThrow();
+    // without a session_id, the mailbox stays EMPTY instead of writing a global file
     run(JSON.stringify({ context_window: { used_percentage: 5 } }), dir);
     expect(readdirSync(dir).filter((f) => f.startsWith('status'))).toHaveLength(0);
-    expect(() => run('kein-json{{{', dir)).not.toThrow();
-    // keine halben Dateien: die temporäre Ablage wird immer aufgeräumt
+    expect(() => run('not-json{{{', dir)).not.toThrow();
+    // no half-written files: the staging file is always cleaned up
     expect(readdirSync(dir).filter((f) => f.startsWith('.status.'))).toHaveLength(0);
     rmSync(dir, { recursive: true, force: true });
   });
 });
 
 describe('readStatus', () => {
-  it('markiert veraltete Stände statt sie unmarkiert weiterzuzeigen', () => {
+  it('marks stale readings instead of showing them unmarked', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     const p = join(dir, 'status-x.json');
     writeFileSync(p, JSON.stringify({ ts: 1000, context: { used_percentage: 10 } }));
@@ -104,7 +104,7 @@ describe('readStatus', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('macht aus fehlenden Feldern null, nicht 0', () => {
+  it('turns missing fields into null, not 0', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     const p = join(dir, 'status-y.json');
     writeFileSync(p, JSON.stringify({ ts: 1 }));
@@ -116,8 +116,8 @@ describe('readStatus', () => {
   });
 });
 
-describe('Collector mit Briefkasten', () => {
-  it('meldet den fehlenden Briefkasten als wartende Quelle, statt zu werfen', async () => {
+describe('Collector with a mailbox', () => {
+  it('reports the missing mailbox as a waiting source, instead of throwing', async () => {
     const c = new Collector({
       eventsPath: '/nonexistent/e.jsonl',
       rules,
@@ -126,10 +126,10 @@ describe('Collector mit Briefkasten', () => {
     });
     const state = await c.poll();
     expect(state.status).toBeNull();
-    expect(state.errors.some((e) => e.source === 'status' && e.reason.includes('wartet'))).toBe(true);
+    expect(state.errors.some((e) => e.source === 'status' && e.reason.includes('waiting'))).toBe(true);
   });
 
-  it('reicht einen vorhandenen Stand durch', async () => {
+  it('passes an existing reading through', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     run(FULL, dir);
     const p = join(dir, 'status-s1.json');
@@ -142,16 +142,16 @@ describe('Collector mit Briefkasten', () => {
   });
 });
 
-describe('Darstellung', () => {
-  it('untilReset rechnet in Stunden, Minuten und Tage', () => {
-    expect(untilReset(1000 + 45 * 60, 1000)).toBe('noch 45 min');
-    expect(untilReset(1000 + 2 * 3600 + 15 * 60, 1000)).toBe('noch 2 h 15 min');
-    expect(untilReset(1000 + 50 * 3600, 1000)).toBe('noch 2 d 2 h');
-    expect(untilReset(500, 1000)).toBe('zurückgesetzt');
+describe('Rendering', () => {
+  it('untilReset computes hours, minutes, and days', () => {
+    expect(untilReset(1000 + 45 * 60, 1000)).toBe('45 min left');
+    expect(untilReset(1000 + 2 * 3600 + 15 * 60, 1000)).toBe('2 h 15 min left');
+    expect(untilReset(1000 + 50 * 3600, 1000)).toBe('2 d 2 h left');
+    expect(untilReset(500, 1000)).toBe('reset');
     expect(untilReset(null, 1000)).toBe('');
   });
 
-  it('bar bleibt immer gleich breit und wird bei Ausreissern nicht laenger', () => {
+  it('bar always stays the same width and does not grow longer for outliers', () => {
     expect(bar(0, 10)).toBe('░'.repeat(10));
     expect(bar(100, 10)).toBe('█'.repeat(10));
     expect(bar(50, 10)).toBe('█'.repeat(5) + '░'.repeat(5));
@@ -159,7 +159,7 @@ describe('Darstellung', () => {
     expect(bar(999, 10)).toBe('█'.repeat(10));
   });
 
-  it('pctColor schaltet bei 50 und 75 um — wie die Statuszeile', () => {
+  it('pctColor switches at 50 and 75 — like the status line', () => {
     expect(pctColor(49)).toBe('green');
     expect(pctColor(50)).toBe('yellow');
     expect(pctColor(74)).toBe('yellow');
@@ -167,9 +167,9 @@ describe('Darstellung', () => {
   });
 });
 
-/** Die Rohdatei bleibt lesbar — Regression gegen ein kaputtes jq-Filter. */
-describe('Briefkasten-Format', () => {
-  it('ist genau eine Zeile gültiges JSON', () => {
+/** The raw file stays readable — regression against a broken jq filter. */
+describe('Mailbox format', () => {
+  it('is exactly one line of valid JSON', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cockpit-'));
     run(FULL, dir);
     const raw = readFileSync(join(dir, 'status-s1.json'), 'utf8');

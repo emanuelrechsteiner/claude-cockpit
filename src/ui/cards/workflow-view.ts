@@ -49,7 +49,7 @@ export interface WorkflowBlock {
  * with the keyboard cursor numbered CONTINUOUSLY across all blocks (this
  * block's bar, then its visible tasks, then the next block's bar, …). A
  * per-block reset would put two different rows at cursor 0 whenever more
- * than one workflow is shown at once (Tasks + Welle).
+ * than one workflow is shown at once (Tasks + Wave).
  */
 export function workflowBlocks(workflows: WorkflowInfo[], maxTasks: number): WorkflowBlock[] {
   let row = 0;

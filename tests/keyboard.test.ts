@@ -15,26 +15,26 @@ describe('parseKey', () => {
     expect(parseKey('\x1b')).toEqual({ type: 'escape' });
     expect(parseKey('q')).toEqual({ type: 'quit' });
   });
-  it('reicht druckbare Zeichen als text-Aktion durch', () => {
-    // Seit 2026-08-04: der tmux-Fokus liegt während der Kartenbedienung auf
-    // dem Dashboard. Wer danach weitertippt, meinte Claude — die App gibt den
-    // Fokus zurück und reicht das Zeichen hinüber, statt es zu verschlucken.
+  it('forwards printable characters as a text action', () => {
+    // Since 2026-08-04: tmux focus sits on the dashboard while operating a
+    // card. Whoever keeps typing after that meant Claude — the app returns
+    // focus and forwards the character instead of swallowing it.
     expect(parseKey('x')).toEqual({ type: 'text', text: 'x' });
     expect(parseKey(' ')).toEqual({ type: 'text', text: ' ' });
     expect(parseKey('ä')).toEqual({ type: 'text', text: 'ä' });
     expect(parseKey('7')).toEqual({ type: 'text', text: '7' });
   });
 
-  it('reicht STEUERZEICHEN nicht durch — die könnten links etwas auslösen', () => {
+  it('does not forward CONTROL CHARACTERS — those could trigger something on the left', () => {
     expect(parseKey('\t')).toBeNull();
-    expect(parseKey('\x03')).toBeNull(); // Strg-C
-    expect(parseKey('\x7f')).toBeNull(); // Löschtaste
-    expect(parseKey('\x1b[Z')).toBeNull(); // unbekannte Escape-Sequenz
+    expect(parseKey('\x03')).toBeNull(); // Ctrl-C
+    expect(parseKey('\x7f')).toBeNull(); // delete key
+    expect(parseKey('\x1b[Z')).toBeNull(); // unknown escape sequence
   });
 
-  it('behandelt q weiterhin als Beenden — die Karten-Ausnahme liegt in der App', () => {
-    // parseKey bleibt kontextfrei und damit prüfbar; ob 'q' bei gewählter
-    // Karte als Text gilt, entscheidet app.tsx anhand des Fokus.
+  it('still treats q as quit — the card exception lives in the app', () => {
+    // parseKey stays context-free and therefore testable; whether 'q' counts
+    // as text while a card is selected is decided by app.tsx based on focus.
     expect(parseKey('q')).toEqual({ type: 'quit' });
   });
 });

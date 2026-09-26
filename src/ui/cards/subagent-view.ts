@@ -63,7 +63,7 @@ function modelName(raw: string | null | undefined, sessionModel: string | null):
 function ago(fromMs: number | undefined, nowMs: number): string {
   if (fromMs === undefined) return '';
   const min = Math.floor(Math.max(0, nowMs - fromMs) / 60_000);
-  return min < 1 ? ' · gerade eben' : ` · vor ${min} min`;
+  return min < 1 ? ' · just now' : ` · ${min} min ago`;
 }
 
 /**
@@ -105,7 +105,7 @@ export function subagentRows(input: {
         color: glyph.color,
         title,
         meta: meta.join(' · '),
-        activity: activity.length > 0 ? activity.join(' · ') : 'arbeitet',
+        activity: activity.length > 0 ? activity.join(' · ') : 'working',
         running: true,
       });
     }
@@ -129,12 +129,12 @@ export function subagentRows(input: {
       title: e.type,
       meta: meta.join(' · '),
       activity: isRunning
-        ? (e.description ?? 'arbeitet')
+        ? (e.description ?? 'working')
         : e.status === 'done'
-          ? `idle · fertig${ago(e.endedAt, now).replace(' · ', ' ')}`
+          ? `idle · done${ago(e.endedAt, now).replace(' · ', ' ')}`
           : e.status === 'lost'
-            ? 'idle · ohne Abschlussmeldung (Sitzung neu gestartet)'
-            : `idle · abgebrochen${ago(e.endedAt, now).replace(' · ', ' ')}`,
+            ? 'idle · no stop event (session restarted)'
+            : `idle · aborted${ago(e.endedAt, now).replace(' · ', ' ')}`,
       running: isRunning,
     });
   }
