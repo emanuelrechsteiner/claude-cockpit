@@ -14,7 +14,10 @@ export interface EventState {
 export function emptyEventState(): EventState {
   return {
     subagents: [],
-    workflows: [{ name: 'Tasks', done: 0, total: 0, tasks: [] }],
+    workflows: [
+      { name: 'Tasks', source: 'tasks', done: 0, total: 0, tasks: [] },
+      { name: 'Welle', source: 'wave', done: 0, total: 0, tasks: [] },
+    ],
     anonymousTasks: { done: 0, total: 0 },
   };
 }
@@ -60,7 +63,11 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
     switch (e.event) {
       case 'SubagentStart': {
         const ti = toolInput(d);
-        const id = str(d['subagent_id']) ?? `sa-${e.ts}`;
+        // tool_use_id is unique per Agent call. The timestamp is only
+        // second-precise: two subagents dispatched in the same message landed
+        // on the same `sa-<ts>` id and one overwrote the other (real case
+        // 2026-09-26: 45 starts, 44 rows).
+        const id = str(d['subagent_id']) ?? str(d['tool_use_id']) ?? `sa-${e.ts}`;
         const type = str(d['subagent_type']) ?? str(ti['subagent_type']) ?? 'general';
         subagents.set(id, {
           id,
@@ -160,11 +167,39 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
     }
   }
   const list = [...tasks.values()];
-  const workflow: WorkflowInfo = {
+  const taskWorkflow: WorkflowInfo = {
     name: prev.workflows[0].name,
+    source: 'tasks',
     done: list.filter((t) => t.status === 'completed').length + anonymous.done,
     total: list.length + anonymous.total,
     tasks: list,
   };
-  return { subagents: [...subagents.values()], workflows: [workflow], anonymousTasks: anonymous };
+  const wave = buildWaveWorkflow([...subagents.values()]);
+  return { subagents: [...subagents.values()], workflows: [taskWorkflow, wave], anonymousTasks: anonymous };
+}
+
+/**
+ * The Welle workflow: one row per subagent, deterministic (SubagentStart/Stop
+ * fire on every hook run, unlike the task list, which only exists when the
+ * model chooses to keep one). Reads the SAME `subagents` state Card 3
+ * (Subagenten) is built from — not a second, independent count of the same
+ * events (see rules/testing-quality.md "Verify Via the Same Code Path").
+ */
+function buildWaveWorkflow(subagents: SubagentInfo[]): WorkflowInfo {
+  const ordered = [...subagents].sort((a, b) => a.startedAt - b.startedAt);
+  const tasks: TaskInfo[] = ordered.map((s) => ({
+    id: s.id,
+    subject: s.description ?? s.type,
+    // 'error' and 'lost' still mean the row is finished, just not cleanly —
+    // Card 3 already surfaces the failure/loss detail; TaskStatus has no
+    // third state to add here without breaking Tasks-workflow consumers.
+    status: s.status === 'running' ? 'in_progress' : 'completed',
+  }));
+  return {
+    name: 'Welle',
+    source: 'wave',
+    done: tasks.filter((t) => t.status === 'completed').length,
+    total: tasks.length,
+    tasks,
+  };
 }

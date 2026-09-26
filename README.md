@@ -28,10 +28,15 @@ its session transcript, and `claude agents --json`.
   so they carry no shortcut.
 - **Seven operable cards** (1–7): Model & Effort, Team Lead, Subagents,
   Workflows, Links, Files, Plugins. Only numbered cards are reachable via ⌘1–7.
-- **Workflows** shows the overall bar of the session's task list and, under
-  it, every task as its own row with its own bar: full = done, empty = open,
-  a travelling two-cell block = running. A task reports a state, not a
-  percentage, so the bar never fakes one.
+- **Workflows** stacks up to two blocks, each with an overall bar and one row
+  per task (full = done, empty = open, a travelling two-cell block = running
+  — a task reports a state, not a percentage, so the bar never fakes one).
+  **Tasks** reads Claude Code's own task list (`TaskCreate`/`TaskUpdate`) and
+  only appears when the model chooses to keep one. **Welle** ("wave") is
+  derived from the `SubagentStart`/`SubagentStop` hook events instead — one
+  row per subagent — which fire deterministically on every run regardless of
+  the model's choices, so it shows up in every session that dispatches
+  subagents, task list or not.
 - Data sources: Claude Code hooks (`SessionStart`, `PreToolUse`,
   `PostToolUse`, `Stop`, `SubagentStop`) write an events log the dashboard
   polls; the session transcript and `claude agents --json` fill in the rest;

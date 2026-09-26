@@ -47,6 +47,13 @@ export interface TaskInfo {
 
 export interface WorkflowInfo {
   name: string;
+  /**
+   * 'tasks' = Claude Code's own task list (TaskCreated/TaskUpdated) — only
+   * appears when the model chooses to keep one. 'wave' = derived from the
+   * SubagentStart/SubagentStop hook events, which fire deterministically
+   * whenever a subagent runs, whether or not a task list exists.
+   */
+  source: 'tasks' | 'wave';
   done: number;
   total: number;
   /** The individual tasks behind done/total, in creation order. */
