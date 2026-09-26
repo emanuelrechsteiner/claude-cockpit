@@ -1,9 +1,11 @@
-import type { CockpitState, SourceError, LinkItem, FileItem, PluginInfo, StatusInfo } from '../types.js';
+import type { CockpitState, SourceError, LinkItem, FileItem, PluginInfo, StatusInfo, LiveAgents } from '../types.js';
 import type { Rules } from '../rules.js';
 import { readNewLines, parseTranscriptLines } from '../parse/transcript.js';
 import { reduceEvents, emptyEventState, type EventState } from '../parse/events.js';
 import { fetchAgents } from './agents.js';
 import { readStatus } from './status.js';
+import { readLiveAgents } from './live-agents.js';
+import { readAgentDefs } from './agent-defs.js';
 
 export interface CollectorOptions {
   eventsPath: string;
@@ -14,6 +16,10 @@ export interface CollectorOptions {
   listPlugins?: () => PluginInfo[];
   /** Briefkasten der Statuszeile; fehlt er, bleiben Kontext- und Verbrauchskarte leer. */
   statusPath?: string;
+  /** Briefkasten der Subagentenzeile (subagent-statusline.sh); fehlt er, bleibt Karte 3 bei den Hook-Ereignissen. */
+  liveAgentsPath?: string;
+  /** Agent definitions (~/.claude/agents) for model/effort on card 3. */
+  agentsDir?: string;
 }
 
 export class Collector {
@@ -99,10 +105,23 @@ export class Collector {
       }
     }
 
+    let liveAgents: LiveAgents | null = null;
+    if (this.opts.liveAgentsPath) {
+      try {
+        liveAgents = readLiveAgents(this.opts.liveAgentsPath);
+      } catch (e) {
+        // Missing file is the normal state before the first subagent runs;
+        // only a real read/parse failure is worth reporting.
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') errors.push({ source: 'subagents', reason: String(e) });
+      }
+    }
+
     return {
       teamLead,
       status,
       subagents: this.eventState.subagents,
+      liveAgents,
+      agentDefs: this.opts.agentsDir ? readAgentDefs(this.opts.agentsDir) : new Map(),
       workflows: this.eventState.workflows,
       links: [...this.links.values()].sort((a, b) => b.ts - a.ts),
       files: [...this.files.values()],

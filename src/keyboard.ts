@@ -12,7 +12,7 @@ export type KeyAction =
 const ESC = '\x1b';
 
 export function parseKey(chunk: string): KeyAction | null {
-  const focus = new RegExp(`^${ESC}ck([1-6])$`).exec(chunk);
+  const focus = new RegExp(`^${ESC}ck([1-7])$`).exec(chunk);
   if (focus) return { type: 'focus', card: Number(focus[1]) };
   if (chunk === `${ESC}[A`) return { type: 'up' };
   if (chunk === `${ESC}[B`) return { type: 'down' };

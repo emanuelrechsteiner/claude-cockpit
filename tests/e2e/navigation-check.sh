@@ -24,7 +24,7 @@ PASS=0; FAIL=0
 check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); printf '  [%s] erwartet=%s bekommen=%s\n' "$1" "$2" "$3"; fi; }
 
 # ── A) Die tmux-Konfiguration: jede Ziffer muss den Fokus mitziehen ──────────
-for n in 10 11 12 13 14 15; do
+for n in 10 11 12 13 14 15 16; do
   check "conf/user$n-sendet"      1 "$(grep -c "bind -n User$n send-keys -t \"{right}\"" "$CONF")"
   check "conf/user$n-fokussiert"  1 "$(grep -c "bind -n User$n .*select-pane -t \"{right}\"" "$CONF")"
 done
@@ -66,8 +66,8 @@ tmux select-pane -t "$SESSION:0.0"; sleep 0.5
 check "start/links-aktiv"    0   "$(active)"
 check "start/karte-nicht-fokussiert" 7 "$(frame_color)"
 
-# ⌘1 nachstellen: genau das, was die tmux-Bindung tut
-tmux send-keys -t "$SESSION:0.1" Escape c k 1
+# ⌘2 nachstellen (Team Lead ist seit 2026-09-24 Karte 2): genau das, was die tmux-Bindung tut
+tmux send-keys -t "$SESSION:0.1" Escape c k 2
 tmux select-pane -t "$SESSION:0.1"
 sleep 1.5
 check "nach-cmd1/rechts-aktiv"  1 "$(active)"
@@ -85,7 +85,7 @@ check "nach-esc/karte-losgelassen" 7 "$(frame_color)"
 
 # Versehentlich getipptes Zeichen: Fokus zurueck UND Zeichen kommt links an
 tmux select-pane -t "$SESSION:0.1"
-tmux send-keys -t "$SESSION:0.1" Escape c k 1; sleep 1.2
+tmux send-keys -t "$SESSION:0.1" Escape c k 2; sleep 1.2
 tmux send-keys -t "$SESSION:0.1" -l "H"; sleep 1.5
 check "verirrtes-zeichen/links-aktiv"   0 "$(active)"
 check "verirrtes-zeichen/karte-los"      7 "$(frame_color)"
@@ -98,7 +98,7 @@ check "verirrtes-zeichen/zeichen-kam-an" 1 "$(grep -c H "$DIR/links-empfangen.tx
 # 'q' bei gewaehlter Karte darf NICHT beenden — sonst verschwaende ein
 # getipptes Wort mit q das ganze Dashboard.
 tmux select-pane -t "$SESSION:0.1"
-tmux send-keys -t "$SESSION:0.1" Escape c k 1; sleep 1.2
+tmux send-keys -t "$SESSION:0.1" Escape c k 2; sleep 1.2
 tmux send-keys -t "$SESSION:0.1" -l "q"; sleep 1.5
 check "q-bei-karte/dashboard-lebt" 1 "$(tmux list-panes -t "$SESSION" 2>/dev/null | wc -l | tr -d ' ' | awk '{print ($1>=2)?1:0}')"
 

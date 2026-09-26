@@ -35,6 +35,8 @@ export function buildCollector(session: CurrentSession): Collector {
     (session.session_id !== undefined
       ? `${COCKPIT_DIR}/status-${session.session_id}.json`
       : undefined);
+  const liveAgentsPath =
+    session.session_id !== undefined ? `${COCKPIT_DIR}/subagents-${session.session_id}.json` : undefined;
   return new Collector({
     eventsPath,
     transcriptPath,
@@ -42,5 +44,7 @@ export function buildCollector(session: CurrentSession): Collector {
     sessionCwd: session.cwd ?? TARGET_CWD,
     listPlugins: () => listPlugins(SETTINGS_PATH),
     statusPath,
+    liveAgentsPath,
+    agentsDir: process.env['COCKPIT_AGENTS_DIR'] ?? `${HOME}/.claude/agents`,
   });
 }

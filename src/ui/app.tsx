@@ -6,9 +6,11 @@ import { KeySequencer, type KeyAction } from '../keyboard.js';
 import { pluginAction, type PluginAction } from '../plugins/actions.js';
 import { SETTINGS_PATH, resolveSession, buildCollector } from './bootstrap.js';
 import { resolveOpenTarget, openArgs } from './activate.js';
-import { returnFocusLeft, forwardToLeft } from './paneFocus.js';
+import { returnFocusLeft, forwardToLeft, submitToLeft } from './paneFocus.js';
+import { EFFORT_LEVELS, MODEL_CHOICES, DEFAULT_EFFORT_INDEX, clampIndex, switchCommands } from '../models.js';
 import type { CockpitState, CardId } from '../types.js';
 import { Card } from './Card.js';
+import { ModelEffort } from './cards/ModelEffort.js';
 import { TeamLead } from './cards/TeamLead.js';
 import { Subagents } from './cards/Subagents.js';
 import { Workflows } from './cards/Workflows.js';
@@ -19,6 +21,7 @@ import { Context } from './cards/Context.js';
 import { Usage } from './cards/Usage.js';
 
 const CARDS: { id: CardId; title: string }[] = [
+  { id: 'model', title: 'Modell & Effort' },
   { id: 'teamlead', title: 'Team Lead' },
   { id: 'subagents', title: 'Subagenten' },
   { id: 'workflows', title: 'Workflows' },
@@ -35,6 +38,7 @@ function App() {
   const [cursor, setCursor] = useState(0);
   const [actionCursor, setActionCursor] = useState<number | null>(null);
   const [pending, setPending] = useState<Map<string, string>>(new Map());
+  const [lastSent, setLastSent] = useState<string | null>(null);
   const [stamp, setStamp] = useState(() => Date.now());
   const { stdin, setRawMode, isRawModeSupported } = useStdin();
   const { stdout } = useStdout();
@@ -136,8 +140,10 @@ function App() {
       } else if (action.type === 'up') setCursor((c) => Math.max(0, c - 1));
       else if (action.type === 'down') setCursor((c) => c + 1);
       else if (action.type === 'left') setActionCursor((ac) => (ac === null ? null : Math.max(0, ac - 1)));
-      else if (action.type === 'right')
-        setActionCursor((ac) => (ac === null ? null : Math.min(PLUGIN_ACTIONS.length - 1, ac + 1)));
+      else if (action.type === 'right') {
+        const barLength = focus !== null && CARDS[focus].id === 'model' ? EFFORT_LEVELS.length : PLUGIN_ACTIONS.length;
+        setActionCursor((ac) => (ac === null ? null : Math.min(barLength - 1, ac + 1)));
+      }
       else if (action.type === 'enter') handleEnter();
     });
     const onData = (buf: Buffer) => seq.push(buf.toString('utf8'));
@@ -151,6 +157,25 @@ function App() {
   function handleEnter(): void {
     if (focus === null || !state) return;
     const card = CARDS[focus].id;
+    if (card === 'model') {
+      const model = MODEL_CHOICES[clampIndex(cursor, MODEL_CHOICES.length)];
+      // Erstes ⏎ oeffnet die Effort-Leiste — ausser das Modell kennt keinen Effort.
+      if (actionCursor === null && model.effort) {
+        setActionCursor(DEFAULT_EFFORT_INDEX);
+        return;
+      }
+      const effort = actionCursor === null ? null : EFFORT_LEVELS[actionCursor];
+      const summary = effort === null ? model.label : `${model.label} · ${effort}`;
+      setLastSent(`sende ${summary} …`);
+      void submitToLeft(switchCommands(model, effort))
+        .then(() => setLastSent(`gesendet: ${summary}`))
+        .catch((e: unknown) => setLastSent(`Fehler: ${String(e).slice(0, 50)}`));
+      // Zurueck zu Claude: dort erscheint die Bestaetigung (oder die Ablehnung).
+      setActionCursor(null);
+      setFocus(null);
+      returnFocusLeft();
+      return;
+    }
     if (card === 'plugins') {
       if (actionCursor === null) {
         setActionCursor(0);
@@ -173,20 +198,38 @@ function App() {
   if (!state) return <Text>lade…</Text>;
   const plugins = state.plugins.map((p) => ({ ...p, pendingChange: pending.get(p.name) ?? p.pendingChange }));
   const body: Record<CardId, React.ReactNode> = {
-    teamlead: <TeamLead data={state.teamLead} focused={focus === 0} cursor={cursor} />,
-    subagents: <Subagents data={state.subagents} focused={focus === 1} cursor={cursor} />,
-    workflows: <Workflows data={state.workflows} focused={focus === 2} cursor={cursor} />,
-    links: <Links data={state.links} focused={focus === 3} cursor={cursor} />,
-    files: <Files data={state.files} focused={focus === 4} cursor={cursor} />,
-    plugins: <Plugins data={plugins} focused={focus === 5} cursor={cursor} actionCursor={actionCursor} />,
+    model: (
+      <ModelEffort
+        current={state.status?.model ?? null}
+        lastSent={lastSent}
+        focused={focus === 0}
+        cursor={cursor}
+        effortCursor={focus === 0 ? actionCursor : null}
+      />
+    ),
+    teamlead: <TeamLead data={state.teamLead} focused={focus === 1} cursor={cursor} />,
+    subagents: (
+      <Subagents
+        data={state.subagents}
+        live={state.liveAgents}
+        defs={state.agentDefs}
+        sessionModel={state.status?.model ?? null}
+        focused={focus === 2}
+        cursor={cursor}
+      />
+    ),
+    workflows: <Workflows data={state.workflows} focused={focus === 3} cursor={cursor} />,
+    links: <Links data={state.links} focused={focus === 4} cursor={cursor} />,
+    files: <Files data={state.files} focused={focus === 5} cursor={cursor} />,
+    plugins: <Plugins data={plugins} focused={focus === 6} cursor={cursor} actionCursor={actionCursor} />,
   };
   const clock = new Date(stamp).toLocaleTimeString('de-DE', { hour12: false });
   return (
     <Box flexDirection="column">
       {/* Zwei reine Anzeigekarten, bewusst OHNE Nummer und ganz oben: sie sind
-          Statuswerte, an denen es nichts auszuwaehlen gibt. So bleibt die
-          Belegung ⌘1-6 fuer die bedienbaren Karten unveraendert — sonst muesste
-          jeder Nutzer seine Ghostty-Konfiguration nachziehen. */}
+          Statuswerte, an denen es nichts auszuwaehlen gibt. Die Nummern gehoeren
+          den bedienbaren Karten — seit 2026-09-24 sieben (⌘1 = Modell & Effort,
+          Nutzerwunsch; die uebrigen rueckten um eins nach unten). */}
       <Card title="Kontext" focused={false}>
         <Context data={state.status} />
       </Card>
@@ -220,7 +263,7 @@ function App() {
           ▶ Tastatur hier · ↑↓ wählen · ⏎ öffnen · esc zurück zu Claude · Stand {clock}
         </Text>
       ) : (
-        <Text dimColor>⌘1-6 Karte wählen · q Ende · Stand {clock}</Text>
+        <Text dimColor>⌘1-7 Karte wählen · q Ende · Stand {clock}</Text>
       )}
     </Box>
   );

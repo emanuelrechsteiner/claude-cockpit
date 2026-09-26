@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { countEchoes, hasReply } from '../models.js';
 
 /**
  * Gibt den tmux-Fokus ans linke Pane (Claude) zurueck — und reicht dabei auf
@@ -44,4 +46,40 @@ export function forwardToLeft(text: string): void {
   execFile('tmux', ['send-keys', '-l', '-t', '{left}', '--', text], () => {
     /* fail-open */
   });
+}
+
+const tmuxRun = promisify(execFile);
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Sichtbarer Inhalt links samt 200 Zeilen Verlauf; -J fuegt umgebrochene Zeilen zusammen. */
+async function captureLeft(): Promise<string> {
+  const { stdout } = await tmuxRun('tmux', ['capture-pane', '-p', '-J', '-t', '{left}', '-S', '-200']);
+  return stdout;
+}
+
+/**
+ * Tippt ganze Befehlszeilen links ein und schickt jede mit Enter ab (Karte
+ * Modell & Effort). Anders als die Zeichen-Durchreiche oben NICHT fail-open:
+ * wer "Opus · high" gewaehlt hat, muss erfahren, wenn es nicht ankam — der
+ * Aufrufer zeigt den Fehler auf der Karte an.
+ *
+ * Vor jeder weiteren Zeile wird gewartet, bis Claude die vorige sichtbar
+ * beantwortet hat (siehe hasReply in models.ts — dort steht, warum eine feste
+ * Pause nicht reichte). Bleibt die Antwort aus, etwa weil Claude gerade
+ * mitten in einer Antwort steckt, wird der Rest NICHT blind hinterhergeschickt.
+ */
+export async function submitToLeft(lines: string[], replyTimeoutMs = 6000): Promise<void> {
+  if (!inTmux()) throw new Error('kein tmux — linkes Pane nicht erreichbar');
+  for (const [i, line] of lines.entries()) {
+    const echoesBefore = countEchoes(await captureLeft(), line);
+    await tmuxRun('tmux', ['send-keys', '-l', '-t', '{left}', '--', line]);
+    await tmuxRun('tmux', ['send-keys', '-t', '{left}', 'Enter']);
+    if (i === lines.length - 1) break;
+    const deadline = Date.now() + replyTimeoutMs;
+    while (!hasReply(await captureLeft(), line, echoesBefore)) {
+      if (Date.now() > deadline) throw new Error(`${line} unbestätigt — Rest nicht gesendet`);
+      await pause(150);
+    }
+    await pause(250);
+  }
 }

@@ -8,5 +8,11 @@ node_modules/
 # Uebergabe blockieren, so wie es plugins/*.json im Konfig-Repo getan haben.
 /status-*.json
 /.status.*
+# Briefkasten der Subagentenzeile (statusline/subagent-statusline.sh, seit
+# 2026-09-26) und die Sitzungszuordnung des SessionStart-Hooks — beides
+# Laufzeitzustand derselben Bauart.
+/subagents-*.json
+/.subagents.*
+/session-*.json
 # Finder-Metadaten von macOS — blockierte am 2026-09-23 die Uebergabe
 .DS_Store

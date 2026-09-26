@@ -47,6 +47,19 @@ function readOne(path: string): CurrentSession | null {
   }
 }
 
+/**
+ * A session belongs to the target folder when it runs in it or in one of its
+ * subfolders. Claude Code reports the cwd it had at SessionStart; after a
+ * compaction that is wherever the shell stood (real case 2026-09-26:
+ * `<project>/site`), so an exact comparison lost the session.
+ */
+function belongsTo(cwd: unknown, targetCwd: string): boolean {
+  // Real session files carry `"cwd": null` (older hook payloads) — not a folder.
+  if (typeof cwd !== 'string') return false;
+  const base = targetCwd.endsWith('/') ? targetCwd.slice(0, -1) : targetCwd;
+  return cwd === base || cwd.startsWith(`${base}/`);
+}
+
 function newestSessionFor(cockpitDir: string, targetCwd: string): CurrentSession | null {
   let best: { s: CurrentSession; mtime: number } | null = null;
   let names: string[];
@@ -59,7 +72,7 @@ function newestSessionFor(cockpitDir: string, targetCwd: string): CurrentSession
     if (!name.startsWith('session-') || !name.endsWith('.json')) continue;
     const path = join(cockpitDir, name);
     const s = readOne(path);
-    if (!s || s.cwd !== targetCwd || s.session_id === undefined) continue;
+    if (!s || s.session_id === undefined || !belongsTo(s.cwd, targetCwd)) continue;
     let mtime = 0;
     try {
       mtime = statSync(path).mtimeMs;

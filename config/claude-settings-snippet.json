@@ -84,5 +84,9 @@
   "statusLine": {
     "type": "command",
     "command": "~/.claude/cockpit/statusline/statusline.sh"
+  },
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "~/.claude/cockpit/statusline/subagent-statusline.sh"
   }
 }

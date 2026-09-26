@@ -21,14 +21,14 @@ APP_PATTERN='tsx src/ui/app.tsx'
 [ -d "$COCKPIT" ] || { echo "Cockpit-Installation fehlt: $COCKPIT" >&2; exit 1; }
 
 # --- 0. Terminal-Vorbedingung laut melden (kein Abbruch, kein stiller Fallback) --
-# ⌘1-6 erreichen das Dashboard nur, wenn GHOSTTY selbst die Tastenbelegung in
+# ⌘1-7 erreichen das Dashboard nur, wenn GHOSTTY selbst die Tastenbelegung in
 # eine Escape-Sequenz uebersetzt (config/ghostty-snippet.conf). Diese Pruefung
 # muss VOR `tmux new-session` laufen: $TERM_PROGRAM ist hier noch der Wert des
 # AEUSSEREN Terminals — sobald tmux angehaengt ist, ueberschreibt tmux selbst
 # TERM_PROGRAM fuer jeden Pane-Prozess auf "tmux" (gemessen 2026-09-23), womit
 # die Pruefung an dieser Stelle die letzte verlaessliche Gelegenheit ist.
 if [ "${TERM_PROGRAM:-}" != "ghostty" ]; then
-  echo "⚠ Terminal ist '${TERM_PROGRAM:-unbekannt}', nicht Ghostty: ⌘1-6 kommen in dieser Sitzung nicht als Tastenbelegung an, die Karten sind über Tastatur nicht erreichbar. Siehe README ‚Setup (einmalig)'." >&2
+  echo "⚠ Terminal ist '${TERM_PROGRAM:-unbekannt}', nicht Ghostty: ⌘1-7 kommen in dieser Sitzung nicht als Tastenbelegung an, die Karten sind über Tastatur nicht erreichbar. Siehe README ‚Setup (einmalig)'." >&2
 fi
 
 # --- 1. Verwaiste Dashboards beenden (nur solche ohne lebendes tmux-Pane) ----

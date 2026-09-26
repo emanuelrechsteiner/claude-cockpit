@@ -6,6 +6,8 @@ const empty: CockpitState = {
   teamLead: { state: 'idle', step: '', model: '', contextPct: 0 },
   status: null,
   subagents: [],
+  liveAgents: null,
+  agentDefs: new Map(),
   workflows: [],
   links: [],
   files: [],

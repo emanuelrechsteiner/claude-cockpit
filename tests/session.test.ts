@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { resolveSession } from '../src/collect/session.js';
 
 const PROJ = '/projekt/a';
-const HOME = '/Users/jemand';
+const HOME = '/anderswo/fremd';
 
 function dir(): string {
   return mkdtempSync(join(tmpdir(), 'cockpit-'));
@@ -44,6 +44,23 @@ describe('resolveSession — pro Sitzung statt global', () => {
     rmSync(d, { recursive: true, force: true });
   });
 
+  it('findet die Sitzung auch, wenn sie aus einem Unterordner des Projekts meldet', () => {
+    // Real beobachtet 2026-09-26: nach einer Verdichtung meldete SessionStart
+    // den Unterordner, in dem die Shell gerade stand (…/projekt/a/site). Der
+    // exakte Abgleich fand nichts, alle Karten standen auf "keine …".
+    const d = dir();
+    writeSession(d, 'meine', `${PROJ}/site`);
+    expect(resolveSession(d, PROJ).session_id).toBe('meine');
+    rmSync(d, { recursive: true, force: true });
+  });
+
+  it('verwechselt keinen Nachbarordner mit gleichem Namensanfang', () => {
+    const d = dir();
+    writeSession(d, 'nachbar', `${PROJ}b`);
+    expect(resolveSession(d, PROJ)).toEqual({});
+    rmSync(d, { recursive: true, force: true });
+  });
+
   it('fällt NICHT auf eine fremde Sitzung zurück, wenn keine passt', () => {
     const d = dir();
     writeSession(d, 'fremde', HOME);
@@ -64,6 +81,8 @@ describe('resolveSession — pro Sitzung statt global', () => {
     const d = dir();
     writeFileSync(join(d, 'session-kaputt.json'), 'kein-json{{{');
     writeFileSync(join(d, 'session-leer.json'), '{}');
+    // Real files from older hook payloads carry "cwd": null.
+    writeFileSync(join(d, 'session-ohne-ort.json'), JSON.stringify({ session_id: 'x', cwd: null }));
     writeFileSync(join(d, 'nicht-relevant.txt'), 'x');
     expect(() => resolveSession(d, PROJ)).not.toThrow();
     expect(resolveSession(d, PROJ)).toEqual({});
