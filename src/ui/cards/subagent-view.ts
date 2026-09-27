@@ -1,4 +1,4 @@
-import type { AgentDef, LiveAgents, SubagentInfo } from '../../types.js';
+import type { AgentDef, LiveAgent, LiveAgents, SubagentInfo } from '../../types.js';
 
 /**
  * "claude-opus-5-5[1m]" → "Opus 5.5". Family name, then the version parts
@@ -66,13 +66,35 @@ function ago(fromMs: number | undefined, nowMs: number): string {
   return min < 1 ? ' · just now' : ` · ${min} min ago`;
 }
 
+const LIVE_DONE = new Set(['completed', 'done', 'success']);
+const LIVE_FAILED = new Set(['failed', 'error', 'cancelled', 'canceled', 'killed']);
+
+/** The panel's generic type for any dispatched agent (Explore, backend-agent …). */
+const GENERIC_LIVE_TYPE = 'local_agent';
+
+/**
+ * The hook-event subagent a live panel row belongs to: same description,
+ * closest start time. The panel keeps a completed agent while it still has
+ * background work, and names it only "local_agent" — the event knows its type.
+ */
+function matchEvent(a: LiveAgent, events: SubagentInfo[]): SubagentInfo | undefined {
+  if (a.description === null) return undefined;
+  const same = events.filter((e) => e.description === a.description);
+  const start = a.startTime;
+  if (start === null) return same[same.length - 1];
+  return same.sort((x, y) => Math.abs(x.startedAt - start) - Math.abs(y.startedAt - start))[0];
+}
+
 /**
  * The rows of card 3. Every row names model and effort and carries one
  * status line — what the subagent is doing, or "idle" once it is done.
  *
  * Running subagents come from the live agent panel when it is fresh (it has
  * the resolved model and the current activity label); otherwise, and for
- * everything finished, from the hook events plus the agent definitions.
+ * everything finished, from the hook events plus the agent definitions. A
+ * panel row whose status is finished is never shown as running: when its
+ * hook event is finished too, the event row stands for it; otherwise it is
+ * rendered finished, without an elapsed time.
  */
 export function subagentRows(input: {
   events: SubagentInfo[];
@@ -83,38 +105,70 @@ export function subagentRows(input: {
 }): SubagentRow[] {
   const { events, live, defs, sessionModel, now } = input;
   const liveFresh = live !== null && !live.stale;
-  const rows: SubagentRow[] = [];
+  const liveRunning: SubagentRow[] = [];
+  const liveFinished: SubagentRow[] = [];
+  /** Ids of running hook events a live row already renders. */
+  const represented = new Set<string>();
 
   if (liveFresh) {
     for (const a of live.agents) {
-      const title = a.type ?? a.name ?? 'subagent';
+      const status = a.status.toLowerCase();
+      const done = LIVE_DONE.has(status);
+      const finished = done || LIVE_FAILED.has(status);
+      const generic = a.type === null || a.type === GENERIC_LIVE_TYPE || a.name === null;
+      // A specific panel type only matches events of that type; the generic one takes the event's.
+      const matched = matchEvent(a, generic ? events : events.filter((e) => e.type === a.type));
+      // Finished on both sides: the event row (with its end time) stands for it.
+      if (finished && matched !== undefined && matched.status !== 'running') continue;
+      const title = (generic ? matched?.type : undefined) ?? a.type ?? a.name ?? 'subagent';
       const def = defs.get(title);
-      const eventMatch = events.find((e) => e.status === 'running' && e.type === title);
+      // The running event this row stands for: the description match, else
+      // (specific type) a running event of that type not taken by another row.
+      const running = matched?.status === 'running' ? matched : undefined;
+      const eventMatch =
+        (generic ? matched : running) ??
+        events.find((e) => e.status === 'running' && e.type === title && !represented.has(e.id));
+      if (eventMatch?.status === 'running') represented.add(eventMatch.id);
       const glyph = agentGlyph(a.status);
       const meta = [
         formatModel(a.model) ?? modelName(eventMatch?.model ?? def?.model, sessionModel),
         formatEffort(a.effort) ?? def?.effort ?? eventMatch?.sessionEffort ?? null,
-        formatElapsed(a.startTime, now),
+        finished ? null : formatElapsed(a.startTime, now),
       ].filter((m): m is string => m !== null && m !== '');
       const activity = [a.description, a.label !== a.description ? a.label : null].filter(
         (l): l is string => l !== null,
       );
-      rows.push({
+      const row: SubagentRow = {
         key: `live-${a.id}`,
         icon: glyph.icon,
         color: glyph.color,
         title,
         meta: meta.join(' · '),
-        activity: activity.length > 0 ? activity.join(' · ') : 'working',
-        running: true,
-      });
+        activity: finished
+          ? done
+            ? 'idle · done'
+            : 'idle · aborted'
+          : activity.length > 0
+            ? activity.join(' · ')
+            : 'working',
+        running: !finished,
+      };
+      (finished ? liveFinished : liveRunning).push(row);
     }
   }
+  const rows: SubagentRow[] = [...liveRunning];
 
-  const fromEvents = events.filter((e) => !(liveFresh && e.status === 'running'));
+  // Only a running event that a live row represents is hidden; one the panel
+  // does not show (a fresh mailbox can still miss an agent) keeps its row.
+  const fromEvents = events.filter((e) => !represented.has(e.id));
   const running = fromEvents.filter((e) => e.status === 'running');
   const finished = fromEvents.filter((e) => e.status !== 'running').reverse();
-  for (const e of [...running, ...finished]) {
+  for (const e of running) rows.push(eventRow(e));
+  rows.push(...liveFinished);
+  for (const e of finished) rows.push(eventRow(e));
+  return rows;
+
+  function eventRow(e: SubagentInfo): SubagentRow {
     const def = defs.get(e.type);
     const isRunning = e.status === 'running';
     const meta = [
@@ -122,10 +176,10 @@ export function subagentRows(input: {
       def?.effort ?? e.sessionEffort ?? null,
       isRunning ? formatElapsed(e.startedAt, now) : null,
     ].filter((m): m is string => m !== null && m !== '');
-    rows.push({
+    return {
       key: e.id,
-      icon: isRunning ? '⟳' : e.status === 'done' ? '✓' : e.status === 'lost' ? '○' : '✗',
-      color: isRunning ? 'yellow' : e.status === 'done' ? 'green' : e.status === 'lost' ? 'gray' : 'red',
+      icon: isRunning ? '⟳' : e.status === 'done' ? '✓' : e.status === 'lost' ? '○' : e.status === 'denied' ? '⊘' : '✗',
+      color: isRunning ? 'yellow' : e.status === 'done' ? 'green' : e.status === 'lost' || e.status === 'denied' ? 'gray' : 'red',
       title: e.type,
       meta: meta.join(' · '),
       activity: isRunning
@@ -134,9 +188,10 @@ export function subagentRows(input: {
           ? `idle · done${ago(e.endedAt, now).replace(' · ', ' ')}`
           : e.status === 'lost'
             ? 'idle · no stop event (session restarted)'
-            : `idle · aborted${ago(e.endedAt, now).replace(' · ', ' ')}`,
+            : e.status === 'denied'
+              ? 'denied · not started'
+              : `idle · aborted${ago(e.endedAt, now).replace(' · ', ' ')}`,
       running: isRunning,
-    });
+    };
   }
-  return rows;
 }

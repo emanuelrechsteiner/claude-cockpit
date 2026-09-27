@@ -1,7 +1,8 @@
+import { statSync } from 'node:fs';
 import type { CockpitState, SourceError, LinkItem, FileItem, PluginInfo, StatusInfo, LiveAgents } from '../types.js';
 import type { Rules } from '../rules.js';
 import { readNewLines, parseTranscriptLines } from '../parse/transcript.js';
-import { reduceEvents, emptyEventState, type EventState } from '../parse/events.js';
+import { reduceEvents, emptyEventState, mergeDispatches, type EventState } from '../parse/events.js';
 import { fetchAgents } from './agents.js';
 import { readStatus } from './status.js';
 import { readLiveAgents } from './live-agents.js';
@@ -22,12 +23,33 @@ export interface CollectorOptions {
   agentsDir?: string;
 }
 
+/**
+ * mtime (ms) of a sensor file. No path configured or file absent → null
+ * (the normal "not written yet" state); any other stat failure is reported.
+ */
+function fileAgeMs(path: string | undefined, source: string, errors: SourceError[]): number | null {
+  if (path === undefined) return null;
+  try {
+    return statSync(path).mtimeMs;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+      errors.push({ source, reason: `cannot read file age: ${String(e)}` });
+    }
+    return null;
+  }
+}
+
 export class Collector {
   private eventsOffset = 0;
   private transcriptOffset = 0;
   private eventState: EventState = emptyEventState();
   private links = new Map<string, LinkItem>();
   private files = new Map<string, FileItem>();
+  /** Agent/Task tool_use ids seen in the transcript so far (see dispatch-map.ts). */
+  private agentCalls = new Set<string>();
+  private eventsSize = -1;
+  /** Consecutive polls in which a record fragment waited and the file did not grow. */
+  private fragmentStalls = 0;
 
   constructor(private opts: CollectorOptions) {}
 
@@ -35,9 +57,12 @@ export class Collector {
     const errors: SourceError[] = [];
 
     try {
-      const { lines, newOffset } = readNewLines(this.opts.eventsPath, this.eventsOffset);
+      const { lines, newOffset, size } = readNewLines(this.opts.eventsPath, this.eventsOffset);
       this.eventsOffset = newOffset;
       this.eventState = reduceEvents(lines, this.eventState);
+      const grew = size !== this.eventsSize;
+      this.eventsSize = size;
+      this.fragmentStalls = this.eventState.pendingFragment === null ? 0 : grew ? 0 : this.fragmentStalls + 1;
     } catch (e) {
       const enoent = (e as NodeJS.ErrnoException).code === 'ENOENT';
       errors.push({
@@ -45,14 +70,26 @@ export class Collector {
         reason: enoent ? 'waiting — no events yet' : String(e),
       });
     }
+    if (this.eventState.unreadable > 0) {
+      errors.push({
+        source: 'events',
+        reason: `${this.eventState.unreadable} unreadable line(s) — some tasks/subagents may be missing`,
+      });
+    }
+    // A head held back for its tail is normal for one poll; a file that has
+    // stopped growing will never deliver it — say so instead of waiting silently.
+    if (this.fragmentStalls >= 2) {
+      errors.push({ source: 'events', reason: '1 record cut off at end of file — waiting for its tail' });
+    }
 
     if (this.opts.transcriptPath) {
       try {
         const { lines, newOffset } = readNewLines(this.opts.transcriptPath, this.transcriptOffset);
         this.transcriptOffset = newOffset;
-        const { links, files } = parseTranscriptLines(lines, this.opts.rules);
+        const { links, files, dispatches } = parseTranscriptLines(lines, this.opts.rules, this.agentCalls);
         for (const l of links) this.links.set(l.url, l);
         for (const f of files) this.files.set(f.path, f);
+        this.eventState = mergeDispatches(this.eventState, dispatches);
       } catch (e) {
         const enoent = (e as NodeJS.ErrnoException).code === 'ENOENT';
         errors.push({
@@ -116,6 +153,12 @@ export class Collector {
       }
     }
 
+    const freshness = {
+      eventsMs: fileAgeMs(this.opts.eventsPath, 'events', errors),
+      statusMs: fileAgeMs(this.opts.statusPath, 'status', errors),
+      liveMs: fileAgeMs(this.opts.liveAgentsPath, 'subagents', errors),
+    };
+
     return {
       teamLead,
       status,
@@ -127,6 +170,10 @@ export class Collector {
       files: [...this.files.values()],
       plugins,
       errors,
+      freshness,
+      unreadableEvents: this.eventState.unreadable,
+      lastEventTs: this.eventState.lastEventTs,
+      unmatchedStops: this.eventState.unmatchedStops,
     };
   }
 }

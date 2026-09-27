@@ -16,8 +16,12 @@ export interface FileItem {
 export interface SubagentInfo {
   id: string;
   type: string;
-  /** lost = the session restarted (resume/startup) before any stop arrived. */
-  status: 'running' | 'done' | 'error' | 'lost';
+  /**
+   * lost = the session restarted (resume/startup) before any stop arrived.
+   * denied = the Agent call was refused (e.g. auto-mode classifier); the
+   * subagent never started.
+   */
+  status: 'running' | 'done' | 'error' | 'lost' | 'denied';
   startedAt: number;
   endedAt?: number;
   /** The `description` of the Agent call — what it was sent to do. */
@@ -131,6 +135,17 @@ export interface LiveAgents {
   agents: LiveAgent[];
 }
 
+/**
+ * When each sensor last wrote (file mtime, ms). null = the file does not
+ * exist (yet) or no path was configured. Lets the UI tell a quiet session
+ * from a sensor that stopped writing.
+ */
+export interface Freshness {
+  eventsMs: number | null;
+  statusMs: number | null;
+  liveMs: number | null;
+}
+
 export interface CockpitState {
   teamLead: TeamLeadInfo;
   /** null while the status line has not written anything yet. */
@@ -145,4 +160,12 @@ export interface CockpitState {
   files: FileItem[];
   plugins: PluginInfo[];
   errors: SourceError[];
+  /** When each sensor file last changed; drives the footer's data-age indicator. */
+  freshness: Freshness;
+  /** Event fragments that could not be read (see EventState.unreadable). */
+  unreadableEvents?: number;
+  /** ms of the newest applied hook event; null before the first. */
+  lastEventTs?: number | null;
+  /** SubagentStops attributed by guess, not by transcript link (see EventState.unmatchedStops). */
+  unmatchedStops?: number;
 }

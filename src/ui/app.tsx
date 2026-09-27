@@ -1,22 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { render, Box, Text, useStdin, useStdout, useApp } from 'ink';
-import { execFile } from 'node:child_process';
+import { render, Box, Text, useStdin, useApp } from 'ink';
 import type { CurrentSession } from '../collect/session.js';
-import { KeySequencer, type KeyAction } from '../keyboard.js';
-import { pluginAction, type PluginAction } from '../plugins/actions.js';
-import { SETTINGS_PATH, resolveSession, buildCollector } from './bootstrap.js';
-import { resolveOpenTarget, openArgs } from './activate.js';
-import { returnFocusLeft, forwardToLeft, submitToLeft } from './paneFocus.js';
-import { EFFORT_LEVELS, MODEL_CHOICES, DEFAULT_EFFORT_INDEX, clampIndex, switchCommands } from '../models.js';
+import { resolveSession, buildCollector } from './bootstrap.js';
 import type { CockpitState, CardId } from '../types.js';
 import { Card } from './Card.js';
+import { Footer } from './Footer.js';
+import { useWipeOnResize } from './useWipeOnResize.js';
+import { useKeyboard } from './useKeyboard.js';
 import { ModelEffort } from './cards/ModelEffort.js';
 import { TeamLead } from './cards/TeamLead.js';
 import { Subagents } from './cards/Subagents.js';
 import { Workflows } from './cards/Workflows.js';
 import { Links } from './cards/Links.js';
 import { Files } from './cards/Files.js';
-import { Plugins, PLUGIN_ACTIONS } from './cards/Plugins.js';
+import { Plugins } from './cards/Plugins.js';
 import { Context } from './cards/Context.js';
 import { Usage } from './cards/Usage.js';
 
@@ -41,48 +38,12 @@ function App() {
   const [lastSent, setLastSent] = useState<string | null>(null);
   const [stamp, setStamp] = useState(() => Date.now());
   const { stdin, setRawMode, isRawModeSupported } = useStdin();
-  const { stdout } = useStdout();
   const { exit } = useApp();
 
-  // ── Ghost frames (2026-08-04) ────────────────────────────────────────────
-  // Ink erases its previous frame by moving the cursor up by the LAST
-  // rendered line count (log-update). When the terminal width changes, the
-  // lines wrap differently, so the remembered count no longer matches — the
-  // old frame stays put and the new one is drawn below it. Measured on the
-  // running dashboard: SEVEN stacked frames, each at a different width. Two
-  // visible symptoms: the cards appear multiple times, and the topmost
-  // (dead) frame no longer reacts to any key — which looks like broken
-  // keyboard control even though focus correctly moves in the live frame.
-  //
-  // Fix: on every resize, clear the screen AND the scrollback buffer
-  // (\x1b[3J).
-  //
-  // prependListener is LOAD-BEARING here, not a style choice: Ink attaches
-  // its own resize listener in its constructor, i.e. BEFORE us. A plain
-  // .on() would run afterward and would wipe the frame Ink just drew — and
-  // Ink would NOT redraw it, because it discards an unchanged frame via
-  // dedupe (ink.js: `output !== this.lastOutput`). That is exactly why the
-  // first version of this fix did nothing; tests/e2e/resize-regression.sh
-  // caught it.
-  //
-  // STILL NEEDED after the upgrade to Ink 7.1.1 + Alternate Screen
-  // (2026-08-04, MEASURED, not assumed): Ink 7.1.1 includes the official
-  // resize fix (PR #828, since 6.5.1) and Alternate Screen isolates from
-  // tmux scrollback — together these keep single, slowly-successive resizes
-  // clean. A FAST BURST of resizes without a pause (a real window-edge drag)
-  // still breaks the native fix: measured 8 -> 13 card frames and a
-  // duplicated "Team Lead" WITHOUT this wipe handler, clean (8, single)
-  // WITH it — same Ink/React version in both cases. This fix therefore
-  // stays in place. Test: tests/e2e/resize-regression.sh (burst stimulus).
-  useEffect(() => {
-    if (!stdout) return;
-    const wipe = () => stdout.write('\x1b[2J\x1b[3J\x1b[H');
-    wipe(); // leftovers from a previous instance in the pane
-    stdout.prependListener('resize', wipe);
-    return () => {
-      stdout.off('resize', wipe);
-    };
-  }, [stdout]);
+  // Ghost-frame resize wipe: see useWipeOnResize.ts for the load-bearing
+  // prependListener comment (Ink attaches its own resize listener first;
+  // a plain .on() would run too late and get deduped away).
+  useWipeOnResize();
 
   useEffect(() => {
     const tick = () => {
@@ -106,92 +67,22 @@ function App() {
     return () => clearInterval(t);
   }, [collector, session.session_id]);
 
-  useEffect(() => {
-    if (!isRawModeSupported) return;
-    setRawMode(true);
-    const seq = new KeySequencer((action: KeyAction) => {
-      // A printable character while a card is selected means: the user
-      // meant Claude. Focus goes back, the character is forwarded — nothing
-      // is lost. That also applies to 'q': if it were a quit command here,
-      // a typed word containing q would close the whole dashboard.
-      const strayText =
-        action.type === 'text' ? action.text : action.type === 'quit' && focus !== null ? 'q' : null;
-      if (strayText !== null) {
-        setFocus(null);
-        setActionCursor(null);
-        forwardToLeft(strayText);
-        returnFocusLeft();
-        return;
-      }
-      if (action.type === 'quit') exit();
-      else if (action.type === 'focus') {
-        setFocus(action.card - 1);
-        setCursor(0);
-        setActionCursor(null);
-      } else if (action.type === 'escape') {
-        setActionCursor((ac) => {
-          if (ac !== null) return null; // close the action bar first …
-          setFocus(null);
-          returnFocusLeft(); // … only then back to Claude
-          return null;
-        });
-      } else if (action.type === 'up') setCursor((c) => Math.max(0, c - 1));
-      else if (action.type === 'down') setCursor((c) => c + 1);
-      else if (action.type === 'left') setActionCursor((ac) => (ac === null ? null : Math.max(0, ac - 1)));
-      else if (action.type === 'right') {
-        const barLength = focus !== null && CARDS[focus].id === 'model' ? EFFORT_LEVELS.length : PLUGIN_ACTIONS.length;
-        setActionCursor((ac) => (ac === null ? null : Math.min(barLength - 1, ac + 1)));
-      }
-      else if (action.type === 'enter') handleEnter();
-    });
-    const onData = (buf: Buffer) => seq.push(buf.toString('utf8'));
-    stdin?.on('data', onData);
-    return () => {
-      stdin?.off('data', onData);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stdin, setRawMode, isRawModeSupported, exit, focus, cursor, actionCursor, state]);
-
-  function handleEnter(): void {
-    if (focus === null || !state) return;
-    const card = CARDS[focus].id;
-    if (card === 'model') {
-      const model = MODEL_CHOICES[clampIndex(cursor, MODEL_CHOICES.length)];
-      // First ⏎ opens the effort bar — unless the model has no effort levels.
-      if (actionCursor === null && model.effort) {
-        setActionCursor(DEFAULT_EFFORT_INDEX);
-        return;
-      }
-      const effort = actionCursor === null ? null : EFFORT_LEVELS[actionCursor];
-      const summary = effort === null ? model.label : `${model.label} · ${effort}`;
-      setLastSent(`sending ${summary} …`);
-      void submitToLeft(switchCommands(model, effort))
-        .then(() => setLastSent(`sent: ${summary}`))
-        .catch((e: unknown) => setLastSent(`Error: ${String(e).slice(0, 50)}`));
-      // Back to Claude: the confirmation (or rejection) appears there.
-      setActionCursor(null);
-      setFocus(null);
-      returnFocusLeft();
-      return;
-    }
-    if (card === 'plugins') {
-      if (actionCursor === null) {
-        setActionCursor(0);
-        return;
-      }
-      const plugin = state.plugins[cursor];
-      if (!plugin) return;
-      const action = PLUGIN_ACTIONS[actionCursor] as PluginAction;
-      void pluginAction(plugin.name, action, SETTINGS_PATH)
-        .then((msg) => setPending((m) => new Map(m).set(plugin.name, msg)))
-        .catch((e: unknown) => setPending((m) => new Map(m).set(plugin.name, `Error: ${String(e).slice(0, 50)}`)));
-      setActionCursor(null);
-      return;
-    }
-    // The selection is computed by activate.ts (tested); opening stays here.
-    const target = resolveOpenTarget(card, state, cursor);
-    if (target) execFile('open', openArgs(target));
-  }
+  useKeyboard({
+    cards: CARDS,
+    stdin,
+    setRawMode,
+    isRawModeSupported,
+    exit,
+    state,
+    focus,
+    cursor,
+    actionCursor,
+    setFocus,
+    setCursor,
+    setActionCursor,
+    setLastSent,
+    setPending,
+  });
 
   if (!state) return <Text>loading…</Text>;
   const plugins = state.plugins.map((p) => ({ ...p, pendingChange: pending.get(p.name) ?? p.pendingChange }));
@@ -221,7 +112,6 @@ function App() {
     files: <Files data={state.files} focused={focus === 5} cursor={cursor} />,
     plugins: <Plugins data={plugins} focused={focus === 6} cursor={cursor} actionCursor={actionCursor} />,
   };
-  const clock = new Date(stamp).toLocaleTimeString('en-US', { hour12: false });
   return (
     <Box flexDirection="column">
       {/* Two pure display cards, deliberately WITHOUT a number and right at
@@ -253,16 +143,7 @@ function App() {
       {session.session_id === undefined && (
         <Text dimColor>waiting for a Claude session in this folder…</Text>
       )}
-      {/* Focus is now REALLY here when a card is selected — that has to be
-          visible, otherwise you type into the dashboard by mistake instead
-          of into Claude. The line stands out while a card is selected. */}
-      {focus !== null ? (
-        <Text color="cyan">
-          ▶ keyboard here · ↑↓ select · ⏎ open · esc back to Claude · as of {clock}
-        </Text>
-      ) : (
-        <Text dimColor>⌘1-7 select card · q quit · as of {clock}</Text>
-      )}
+      <Footer focused={focus !== null} freshness={state.freshness} stamp={stamp} />
     </Box>
   );
 }

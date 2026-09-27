@@ -13,6 +13,7 @@ const empty: CockpitState = {
   files: [],
   plugins: [],
   errors: [],
+  freshness: { eventsMs: null, statusMs: null, liveMs: null },
 };
 
 const f = (path: string, origin: FileItem['origin'], ts: number): FileItem => ({ path, origin, ts });

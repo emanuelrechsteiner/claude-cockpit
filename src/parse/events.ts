@@ -1,4 +1,8 @@
 import type { SubagentInfo, TaskInfo, TaskStatus, WorkflowInfo } from '../types.js';
+import { salvageLines } from './salvage.js';
+import { resolveSubagents, type Dispatch, type DispatchMap, type Lifecycle } from './dispatch-map.js';
+
+export type { EventLine } from './salvage.js';
 
 export interface EventState {
   subagents: SubagentInfo[];
@@ -9,6 +13,26 @@ export interface EventState {
    * worked before it listed tasks.
    */
   anonymousTasks: { done: number; total: number };
+  /**
+   * Cumulative count of event fragments that could not be read (truncated or
+   * garbled JSON). Never silently dropped: the collector surfaces it as an
+   * error so a short task/subagent count is visibly explained.
+   */
+  unreadable: number;
+  /** ms timestamp of the newest event that was applied; null before the first. */
+  lastEventTs: number | null;
+  /**
+   * The unreadable head of a record that ended the last batch. Its tail may
+   * be the first line of the next batch (interleaved writes, see salvage.ts);
+   * it is counted in `unreadable` only if that line does not complete it.
+   */
+  pendingFragment: string | null;
+  /** Subagent starts/stops/restarts in file order; `subagents` is derived from it. */
+  lifecycle: Lifecycle[];
+  /** Agent call outcomes from the transcript, by tool_use_id (see dispatch-map.ts). */
+  dispatches: DispatchMap;
+  /** Stops with no transcript link, attributed by the oldest-same-type guess. */
+  unmatchedStops: number;
 }
 
 export function emptyEventState(): EventState {
@@ -19,13 +43,13 @@ export function emptyEventState(): EventState {
       { name: 'Wave', source: 'wave', done: 0, total: 0, tasks: [] },
     ],
     anonymousTasks: { done: 0, total: 0 },
+    unreadable: 0,
+    lastEventTs: null,
+    pendingFragment: null,
+    lifecycle: [],
+    dispatches: {},
+    unmatchedStops: 0,
   };
-}
-
-interface EventLine {
-  ts: number;
-  event: string;
-  data: Record<string, unknown> | null;
 }
 
 function str(v: unknown): string | undefined {
@@ -49,16 +73,14 @@ function isStatus(v: string | undefined): v is TaskStatus {
 }
 
 export function reduceEvents(lines: string[], prev: EventState): EventState {
-  const subagents = new Map(prev.subagents.map((s) => [s.id, { ...s }]));
+  const lifecycle = [...prev.lifecycle];
   const tasks = new Map<string, TaskInfo>(prev.workflows[0].tasks.map((t) => [t.id, { ...t }]));
   const anonymous = { ...prev.anonymousTasks };
-  for (const line of lines) {
-    let e: EventLine;
-    try {
-      e = JSON.parse(line) as EventLine;
-    } catch {
-      continue;
-    }
+  const salvaged = salvageLines(lines, prev.pendingFragment);
+  const unreadable = prev.unreadable + salvaged.unreadable;
+  let lastEventTs = prev.lastEventTs;
+  for (const e of salvaged.events) {
+    lastEventTs = lastEventTs === null ? e.ts : Math.max(lastEventTs, e.ts);
     const d = e.data ?? {};
     switch (e.event) {
       case 'SubagentStart': {
@@ -69,18 +91,21 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
         // 2026-09-26: 45 starts, 44 rows).
         const id = str(d['subagent_id']) ?? str(d['tool_use_id']) ?? `sa-${e.ts}`;
         const type = str(d['subagent_type']) ?? str(ti['subagent_type']) ?? 'general';
-        subagents.set(id, {
-          id,
-          type,
-          status: 'running',
-          startedAt: e.ts,
-          description: str(ti['description']) ?? null,
-          // Per-call model ("opus", "sonnet", …) — absent when the call does not override it.
-          model: str(ti['model']) ?? null,
-          // The session's effort at dispatch; a subagent without its own
-          // `effort:` frontmatter inherits it (code.claude.com/docs/en/statusline).
-          sessionEffort: str(obj(d['effort'])['level']) ?? null,
-          lastMessage: null,
+        lifecycle.push({
+          kind: 'start',
+          info: {
+            id,
+            type,
+            status: 'running',
+            startedAt: e.ts,
+            description: str(ti['description']) ?? null,
+            // Per-call model ("opus", "sonnet", …) — absent when the call does not override it.
+            model: str(ti['model']) ?? null,
+            // The session's effort at dispatch; a subagent without its own
+            // `effort:` frontmatter inherits it (code.claude.com/docs/en/statusline).
+            sessionEffort: str(obj(d['effort'])['level']) ?? null,
+            lastMessage: null,
+          },
         });
         break;
       }
@@ -91,18 +116,17 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
         // subagent on those ticked it off while it was still working.
         const agentType = d['agent_type'];
         if (agentType === '') break;
-        const id = str(d['subagent_id']);
-        let target = id ? subagents.get(id) : undefined;
-        if (!target) {
-          target = [...subagents.values()]
-            .filter((s) => s.status === 'running' && (typeof agentType !== 'string' || s.type === agentType))
-            .sort((a, b) => a.startedAt - b.startedAt)[0];
-        }
-        if (target) {
-          target.status = d['result_status'] === undefined || d['result_status'] === 'success' ? 'done' : 'error';
-          target.endedAt = e.ts;
-          target.lastMessage = str(d['last_assistant_message']) ?? null;
-        }
+        const rs = d['result_status'];
+        lifecycle.push({
+          kind: 'stop',
+          ts: e.ts,
+          directId: str(d['subagent_id']) ?? null,
+          // Linked to its start through the transcript (see dispatch-map.ts).
+          agentId: str(d['agent_id']) ?? null,
+          agentType: str(agentType) ?? null,
+          failed: !(rs === undefined || rs === 'success'),
+          lastMessage: str(d['last_assistant_message']) ?? null,
+        });
         break;
       }
       case 'SessionStart': {
@@ -111,14 +135,7 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
         // this, a subagent lost to a reboot or a kill showed as "running for
         // 412 min" (real case 2026-09-26).
         const source = str(d['source']);
-        if (source === 'resume' || source === 'startup') {
-          for (const s of subagents.values()) {
-            if (s.status === 'running') {
-              s.status = 'lost';
-              s.endedAt = e.ts;
-            }
-          }
-        }
+        if (source === 'resume' || source === 'startup') lifecycle.push({ kind: 'restart', ts: e.ts });
         break;
       }
       case 'TaskCreated': {
@@ -174,8 +191,32 @@ export function reduceEvents(lines: string[], prev: EventState): EventState {
     total: list.length + anonymous.total,
     tasks: list,
   };
-  const wave = buildWaveWorkflow([...subagents.values()]);
-  return { subagents: [...subagents.values()], workflows: [taskWorkflow, wave], anonymousTasks: anonymous };
+  return withSubagents({
+    ...prev,
+    workflows: [taskWorkflow, prev.workflows[1]],
+    lifecycle,
+    anonymousTasks: anonymous,
+    unreadable,
+    lastEventTs,
+    pendingFragment: salvaged.pending,
+  });
+}
+
+/**
+ * Adds dispatch outcomes from the transcript (any order relative to the
+ * events, any poll) and re-attributes every stop against the merged map.
+ */
+export function mergeDispatches(prev: EventState, dispatches: Dispatch[]): EventState {
+  if (dispatches.length === 0) return prev;
+  const map: DispatchMap = { ...prev.dispatches };
+  for (const d of dispatches) map[d.toolUseId] = { agentId: d.agentId, denied: d.denied };
+  return withSubagents({ ...prev, dispatches: map });
+}
+
+/** Derives subagents, unmatchedStops and the Wave workflow from the log. */
+function withSubagents(state: EventState): EventState {
+  const { subagents, unmatchedStops } = resolveSubagents(state.lifecycle, state.dispatches);
+  return { ...state, subagents, unmatchedStops, workflows: [state.workflows[0], buildWaveWorkflow(subagents)] };
 }
 
 /**
@@ -190,7 +231,7 @@ function buildWaveWorkflow(subagents: SubagentInfo[]): WorkflowInfo {
   const tasks: TaskInfo[] = ordered.map((s) => ({
     id: s.id,
     subject: s.description ?? s.type,
-    // 'error' and 'lost' still mean the row is finished, just not cleanly —
+    // 'error', 'lost' and 'denied' still mean the row is finished, just not cleanly —
     // Card 3 already surfaces the failure/loss detail; TaskStatus has no
     // third state to add here without breaking Tasks-workflow consumers.
     status: s.status === 'running' ? 'in_progress' : 'completed',

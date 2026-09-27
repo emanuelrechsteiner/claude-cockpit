@@ -105,19 +105,7 @@ describe('subagentRows', () => {
     expect(rows[0]).toMatchObject({ meta: 'Opus 5.5 · max · 42s', activity: 'Research hooks', icon: '⟳' });
   });
 
-  it('prefers the live panel data for running subagents (resolved model, current label)', () => {
-    const rows = subagentRows({
-      events: [{ id: 'e', type: 'backend-agent', status: 'running', startedAt: now - 5_000, description: 'Add route', model: 'opus', sessionEffort: 'max', lastMessage: null }],
-      live: {
-        ts: 0,
-        stale: false,
-        agents: [{ id: 'L', name: 'backend-agent', type: 'backend-agent', status: 'running', description: 'Add route', label: 'Edit src/routes/health.ts', startTime: now - 5_000, model: 'claude-opus-5-5', effort: 'high', tokenCount: 1 }],
-      },
-      defs,
-      sessionModel: null,
-      now,
-    });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ title: 'backend-agent', meta: 'Opus 5.5 · high · 5s', activity: 'Add route · Edit src/routes/health.ts' });
-  });
+  // Live-mailbox tests (completed/failed/running live agents, generic
+  // local_agent matching, live/event de-duplication) live in
+  // tests/subagent-rows-live.test.ts.
 });
